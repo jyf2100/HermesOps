@@ -502,3 +502,244 @@ test.describe("Audit Log Query", () => {
     expect(mockAuditLog.items[1].old_values).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Profile Sorting
+// ---------------------------------------------------------------------------
+
+test.describe("Profile Sorting", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdminEn(page);
+  });
+
+  test("sorts profiles by name ascending by default", async ({ page }) => {
+    await goToProfiles(page);
+
+    // The sort dropdown defaults to "name" — verify rendered order.
+    // sorted by profile_name: "broken" < "default" < "research-mode"
+    const profileNames = page.locator(
+      "div.rounded-lg.border.bg-surface span.font-medium.font-\\[family-name\\:var\\(--font-mono\\)\\]"
+    );
+    await expect(profileNames).toHaveText(["broken", "default", "research-mode"]);
+  });
+
+  test("sorts profiles by sync status when selected", async ({ page }) => {
+    await goToProfiles(page);
+
+    // Switch sort to "By status"
+    const sortSelect = page.locator("select").first();
+    await sortSelect.selectOption("status");
+
+    // Sorted by sync_status: "error" < "pending" < "synced"
+    // -> broken (error), research-mode (pending), default (synced)
+    const profileNames = page.locator(
+      "div.rounded-lg.border.bg-surface span.font-medium.font-\\[family-name\\:var\\(--font-mono\\)\\]"
+    );
+    await expect(profileNames).toHaveText(["broken", "research-mode", "default"]);
+  });
+
+  test("sorts profiles by updated time when selected", async ({ page }) => {
+    await goToProfiles(page);
+
+    // Switch sort to "By updated"
+    const sortSelect = page.locator("select").first();
+    await sortSelect.selectOption("updated");
+
+    // Sorted by updated_at descending:
+    // default (11:00) > research-mode (10:30) > broken (10:45)
+    // Wait — broken is 10:45 which is > 10:30, so: default, broken, research-mode
+    const profileNames = page.locator(
+      "div.rounded-lg.border.bg-surface span.font-medium.font-\\[family-name\\:var\\(--font-mono\\)\\]"
+    );
+    await expect(profileNames).toHaveText(["default", "broken", "research-mode"]);
+  });
+
+  test("hides sort dropdown when only one profile", async ({ page }) => {
+    const singleProfile = [mockProfileList[0]];
+    await goToProfiles(page, singleProfile);
+
+    // The sort select should NOT be visible when there is only 1 profile
+    await expect(page.locator('h3:text("Profiles") + select')).not.toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch Selection
+// ---------------------------------------------------------------------------
+
+test.describe("Batch Selection", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdminEn(page);
+  });
+
+  test("toggles individual profile checkbox", async ({ page }) => {
+    await goToProfiles(page);
+
+    // Each profile row has a checkbox. Click the one associated with the "default" profile.
+    const defaultRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "default" });
+    const checkbox = defaultRow.locator("input[type='checkbox']");
+    await checkbox.click();
+
+    // The row should gain selected styling (border-accent-cyan/40)
+    await expect(defaultRow).toHaveClass(/border-accent-cyan\/40/);
+
+    // Click again to deselect
+    await checkbox.click();
+    await expect(defaultRow).not.toHaveClass(/border-accent-cyan\/40/);
+  });
+
+  test("selects all profiles via select all checkbox", async ({ page }) => {
+    await goToProfiles(page);
+
+    // The "Select all" checkbox is above the profile rows
+    const selectAllCheckbox = page.locator("input[type='checkbox']").first();
+    await selectAllCheckbox.click();
+
+    // All 3 profile rows should have the selected border class
+    const selectedRows = page.locator("div.rounded-lg.border.bg-surface.border-accent-cyan\\/40");
+    await expect(selectedRows).toHaveCount(3);
+  });
+
+  test("deselects all when clicking select all twice", async ({ page }) => {
+    await goToProfiles(page);
+
+    const selectAllCheckbox = page.locator("input[type='checkbox']").first();
+    // First click: select all
+    await selectAllCheckbox.click();
+    const selectedRows = page.locator("div.rounded-lg.border.bg-surface.border-accent-cyan\\/40");
+    await expect(selectedRows).toHaveCount(3);
+
+    // Second click: deselect all
+    await selectAllCheckbox.click();
+    await expect(selectedRows).toHaveCount(0);
+  });
+
+  test("shows selected count text", async ({ page }) => {
+    await goToProfiles(page);
+
+    // Initially shows "Select all"
+    await expect(page.locator('text="Select all"')).toBeVisible();
+
+    // Select one profile
+    const brokenRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "broken" });
+    await brokenRow.locator("input[type='checkbox']").click();
+
+    // Should now show "1 selected"
+    await expect(page.locator('text="1 selected"')).toBeVisible();
+  });
+
+  test("shows batch delete button when profiles selected", async ({ page }) => {
+    await goToProfiles(page);
+
+    // No batch delete button initially
+    await expect(page.locator("button:has-text('Delete (')")).not.toBeVisible();
+
+    // Select two profiles
+    const brokenRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "broken" });
+    await brokenRow.locator("input[type='checkbox']").click();
+    const defaultRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "default" });
+    await defaultRow.locator("input[type='checkbox']").click();
+
+    // Batch delete button should appear with count
+    await expect(page.locator("button:has-text('Delete (2)')")).toBeVisible();
+  });
+
+  test("hides batch delete when no profiles selected", async ({ page }) => {
+    await goToProfiles(page);
+
+    // Batch delete button should not exist when nothing is selected
+    await expect(page.locator("button:has-text('Delete (')")).not.toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch Delete
+// ---------------------------------------------------------------------------
+
+test.describe("Batch Delete", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdminEn(page);
+  });
+
+  test("batch deletes selected profiles after confirmation", async ({ page }) => {
+    const deletedNames: string[] = [];
+
+    await mockBaseRoutes(page);
+    await page.route("**/admin/api/agents/1/profiles/**", async (route) => {
+      if (route.request().method() === "DELETE") {
+        const url = new URL(route.request().url());
+        const segments = url.pathname.split("/");
+        const profileName = segments[segments.length - 1];
+        deletedNames.push(decodeURIComponent(profileName));
+        return route.fulfill({ json: { status: "deleted" } });
+      }
+      return route.fallback();
+    });
+
+    await page.goto("/admin/agents/1?tab=profiles");
+    await page.waitForSelector('text="Profiles"');
+
+    // Select two profiles via their row checkboxes
+    const brokenRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "broken" });
+    await brokenRow.locator("input[type='checkbox']").click();
+    const defaultRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "default" });
+    await defaultRow.locator("input[type='checkbox']").click();
+
+    // Accept the confirm dialog
+    page.once("dialog", (dialog) => {
+      expect(dialog.message()).toContain("Delete 2 profiles");
+      dialog.accept();
+    });
+
+    // Click the batch delete button
+    await page.locator("button:has-text('Delete (2)')").click();
+
+    // Verify DELETE requests were sent for both profiles
+    await expect(() => {
+      expect(deletedNames).toHaveLength(2);
+      expect(deletedNames).toContain("broken");
+      expect(deletedNames).toContain("default");
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("cancels batch delete without calling API", async ({ page }) => {
+    let deleteCalled = false;
+
+    await mockBaseRoutes(page);
+    await page.route("**/admin/api/agents/1/profiles/**", async (route) => {
+      if (route.request().method() === "DELETE") {
+        deleteCalled = true;
+        return route.fulfill({ json: { status: "deleted" } });
+      }
+      return route.fallback();
+    });
+
+    await page.goto("/admin/agents/1?tab=profiles");
+    await page.waitForSelector('text="Profiles"');
+
+    // Select two profiles
+    const brokenRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "broken" });
+    await brokenRow.locator("input[type='checkbox']").click();
+    const defaultRow = page.locator("div.rounded-lg.border.bg-surface").filter({ hasText: "default" });
+    await defaultRow.locator("input[type='checkbox']").click();
+
+    // Dismiss the confirm dialog
+    page.once("dialog", (dialog) => dialog.dismiss());
+
+    await page.locator("button:has-text('Delete (2)')").click();
+
+    // Wait briefly to ensure no DELETE was sent
+    await page.waitForTimeout(500);
+    expect(deleteCalled).toBe(false);
+  });
+
+  test("hides select all when only one profile", async ({ page }) => {
+    const singleProfile = [mockProfileList[0]];
+    await goToProfiles(page, singleProfile);
+
+    // The select-all row should not appear for a single profile
+    await expect(page.locator('text="Select all"')).not.toBeVisible();
+    // The per-row checkbox should still be present
+    await expect(page.locator("div.rounded-lg.border.bg-surface input[type='checkbox']")).toHaveCount(1);
+  });
+});
