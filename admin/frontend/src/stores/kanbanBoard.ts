@@ -1,17 +1,19 @@
 import { create } from "zustand";
 import { adminFetch } from "../lib/admin-api";
-import type { KanbanTask, KanbanComment } from "../components/kanban/kanban-types";
+import type { KanbanTask, KanbanComment, AssigneeProfile } from "../components/kanban/kanban-types";
 
 interface KanbanBoardState {
   tasks: KanbanTask[];
+  assignees: AssigneeProfile[];
   loading: boolean;
   error: string | null;
   fetchBoard: (agentId: number) => Promise<void>;
+  fetchAssignees: (agentId: number) => Promise<void>;
   startPolling: (agentId: number) => void;
   stopPolling: () => void;
   createTask: (
     agentId: number,
-    data: { title: string; body?: string; priority?: number; labels?: string[]; assignee?: string }
+    data: { title: string; body?: string; priority?: number; labels?: string[]; skills?: string[]; assignee?: string; parents?: string[] }
   ) => Promise<void>;
   updateTask: (
     agentId: number,
@@ -50,6 +52,7 @@ function _handleVisibility() {
 
 export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
   tasks: [],
+  assignees: [],
   loading: false,
   error: null,
 
@@ -64,6 +67,17 @@ export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
       set({ tasks, loading: false });
     } catch (e: unknown) {
       set({ error: e instanceof Error ? e.message : String(e), loading: false });
+    }
+  },
+
+  fetchAssignees: async (agentId: number) => {
+    try {
+      const data = await adminFetch<{ assignees: AssigneeProfile[] }>(
+        `/agents/${agentId}/kanban/assignees`
+      );
+      set({ assignees: Array.isArray(data?.assignees) ? data.assignees : [] });
+    } catch (e: unknown) {
+      console.warn("Failed to fetch assignees:", e);
     }
   },
 

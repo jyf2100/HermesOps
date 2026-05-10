@@ -59,18 +59,49 @@ export function KanbanCard({ task, onClick }: KanbanCardProps) {
           {task.title}
         </span>
       </div>
-      {task.labels && task.labels.length > 0 && (
+      {/* Dependency badges */}
+      {(task.link_counts?.parents || task.link_counts?.children || task.progress) && (
+        <div className="flex items-center gap-1.5 mt-1.5">
+          {task.link_counts && task.link_counts.parents > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-text-secondary/10 text-text-secondary">
+              {task.progress && task.progress.done >= task.progress.total
+                ? (t.kanbanParentDone ?? "✓")
+                : (t.kanbanParentBadge ?? "⬆ {n}").replace("{n}", String(task.link_counts.parents))}
+            </span>
+          )}
+          {task.link_counts && task.link_counts.children > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-cyan/10 text-accent-cyan">
+              {(t.kanbanChildBadge ?? "⬇ {n}").replace("{n}", String(task.link_counts.children))}
+            </span>
+          )}
+          {task.progress && task.progress.total > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success">
+              {(t.kanbanProgress ?? "{done}/{total}").replace("{done}", String(task.progress.done)).replace("{total}", String(task.progress.total))}
+            </span>
+          )}
+        </div>
+      )}
+
+      {(task.labels && task.labels.length > 0) || (task.skills && task.skills.length > 0) ? (
         <div className="flex flex-wrap gap-1 mt-2">
-          {task.labels.map((label) => (
+          {task.skills?.map((skill) => (
             <span
-              key={label}
+              key={`s-${skill}`}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-accent-pink/10 text-accent-pink"
+            >
+              {skill}
+            </span>
+          ))}
+          {task.labels?.map((label) => (
+            <span
+              key={`l-${label}`}
               className="text-[10px] px-1.5 py-0.5 rounded bg-accent-cyan/10 text-accent-cyan"
             >
               {label}
             </span>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

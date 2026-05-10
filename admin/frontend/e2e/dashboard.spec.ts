@@ -46,7 +46,7 @@ test.describe("Dashboard", () => {
     await page.goto("/admin/");
 
     // Should show dashed "+ New Agent" card or empty state
-    await expect(page.getByText(/暂无|No Agent/i)).toBeVisible();
+    await expect(page.getByText(/暂无\s*Agent|No Agent/i)).toBeVisible();
   });
 
   test("navigates to agent detail on card click", async ({ page }) => {

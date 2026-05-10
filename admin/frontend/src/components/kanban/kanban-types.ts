@@ -15,11 +15,15 @@ export interface KanbanTask {
   priority?: number;
   assignee?: string;
   labels?: string[];
+  skills?: string[];
   created_at: number;
   completed_at?: number | null;
   block_reason?: string;
   comment_count?: number;
   link_counts?: { parents: number; children: number };
+  parents?: string[];
+  children?: string[];
+  progress?: { done: number; total: number };
 }
 
 export interface KanbanTaskDetail extends KanbanTask {
@@ -29,6 +33,10 @@ export interface KanbanTaskDetail extends KanbanTask {
   last_failure_error?: string | null;
   worker_pid?: number | null;
   consecutive_failures?: number;
+  links?: {
+    parents: { id: string; title: string; status: KanbanStatus }[];
+    children: { id: string; title: string; status: KanbanStatus }[];
+  };
 }
 
 export interface KanbanBoard {
@@ -48,4 +56,10 @@ export interface KanbanComment {
   author: string;
   body: string;
   created_at: number;
+}
+
+export interface AssigneeProfile {
+  name: string;
+  on_disk: boolean;
+  counts: Record<KanbanStatus, number>;
 }

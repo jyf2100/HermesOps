@@ -162,7 +162,7 @@ class K8sClient:
     async def get_first_pod_name(self, deployment_name: str) -> Optional[str]:
         pods = await self.get_pods_for_deployment(deployment_name)
         for pod in pods:
-            if pod.status.phase in ("Running", "Pending"):
+            if pod.status.phase == "Running":
                 return pod.metadata.name
         return None
 

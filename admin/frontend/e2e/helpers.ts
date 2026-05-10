@@ -19,6 +19,17 @@ export async function loginAsAdmin(page: Page) {
 }
 
 /**
+ * Login as admin and set English locale for tests that assert against English text.
+ */
+export async function loginAsAdminEn(page: Page) {
+  await page.goto("/admin/login");
+  await page.evaluate((key) => {
+    localStorage.setItem("admin_api_key", key);
+    localStorage.setItem("admin_lang", "en");
+  }, VALID_ADMIN_KEY);
+}
+
+/**
  * Intercept all /admin/api/* requests and return mock data.
  */
 export async function mockApi(

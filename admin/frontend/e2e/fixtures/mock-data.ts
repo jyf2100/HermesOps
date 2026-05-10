@@ -425,3 +425,186 @@ export const mockExecutionConflict = {
 export const mockExecutionRateLimit = {
   detail: "Max concurrent workflows reached (4)",
 };
+
+// -- Profile Templates --
+export const mockProfileTemplates = [
+  {
+    id: 1,
+    name: "researcher",
+    display_name: "Researcher",
+    description: "Deep research and analysis template",
+    config_overrides: { model: { default: "glm-4.7", provider: "custom" } },
+    soul_md: "You are a professional research analyst.",
+    is_builtin: true,
+    created_at: "2026-05-01T10:00:00Z",
+    updated_at: "2026-05-01T10:00:00Z",
+  },
+  {
+    id: 2,
+    name: "writer",
+    display_name: "Writer",
+    description: "Content creation template",
+    config_overrides: { model: { default: "glm-4.7", provider: "custom" } },
+    soul_md: "You are a professional content writer.",
+    is_builtin: true,
+    created_at: "2026-05-01T10:00:00Z",
+    updated_at: "2026-05-01T10:00:00Z",
+  },
+  {
+    id: 3,
+    name: "my-custom",
+    display_name: "My Custom",
+    description: "Custom template for testing",
+    config_overrides: {},
+    soul_md: null,
+    is_builtin: false,
+    created_at: "2026-05-10T10:00:00Z",
+    updated_at: "2026-05-10T10:00:00Z",
+  },
+];
+
+export const mockCreatedTemplate = {
+  id: 10,
+  name: "new-template",
+  display_name: "New Template",
+  description: "A brand new template",
+  config_overrides: {},
+  soul_md: null,
+  is_builtin: false,
+  created_at: "2026-05-10T12:00:00Z",
+  updated_at: "2026-05-10T12:00:00Z",
+};
+
+export const mockClonedTemplate = {
+  id: 11,
+  name: "researcher-copy",
+  display_name: "Researcher",
+  description: "Deep research and analysis template",
+  config_overrides: { model: { default: "glm-4.7", provider: "custom" } },
+  soul_md: "You are a professional research analyst.",
+  is_builtin: false,
+  created_at: "2026-05-10T12:01:00Z",
+  updated_at: "2026-05-10T12:01:00Z",
+};
+
+// -- Agent Profiles --
+export const mockProfileList = [
+  {
+    id: 101,
+    agent_number: 1,
+    profile_name: "default",
+    display_name: "Default",
+    template_id: null,
+    template_name: null,
+    template_display_name: null,
+    config_overrides: {},
+    soul_md: null,
+    sync_status: "synced",
+    sync_error: null,
+    config_hash: "abc123",
+    last_synced_at: "2026-05-10T11:00:00Z",
+    created_at: "2026-05-10T10:00:00Z",
+    updated_at: "2026-05-10T11:00:00Z",
+  },
+  {
+    id: 102,
+    agent_number: 1,
+    profile_name: "research-mode",
+    display_name: "Research Mode",
+    template_id: 1,
+    template_name: "researcher",
+    template_display_name: "Researcher",
+    config_overrides: { model: { default: "glm-4.7" } },
+    soul_md: "You are a professional research analyst.",
+    sync_status: "pending",
+    sync_error: null,
+    config_hash: "def456",
+    last_synced_at: null,
+    created_at: "2026-05-10T10:30:00Z",
+    updated_at: "2026-05-10T10:30:00Z",
+  },
+  {
+    id: 103,
+    agent_number: 1,
+    profile_name: "broken",
+    display_name: "Broken Profile",
+    template_id: null,
+    template_name: null,
+    template_display_name: null,
+    config_overrides: {},
+    soul_md: null,
+    sync_status: "error",
+    sync_error: "Pod not found",
+    config_hash: "ghi789",
+    last_synced_at: null,
+    created_at: "2026-05-10T10:45:00Z",
+    updated_at: "2026-05-10T10:45:00Z",
+  },
+];
+
+export const mockEmptyProfileList: unknown[] = [];
+
+export const mockCreatedProfile = {
+  id: 104,
+  agent_number: 1,
+  profile_name: "new-profile",
+  display_name: "New Profile",
+  template_id: 1,
+  config_overrides: { model: { default: "glm-4.7" } },
+  soul_md: "You are a professional research analyst.",
+  sync_status: "pending",
+  sync_error: null,
+  config_hash: "jkl012",
+  last_synced_at: null,
+  created_at: "2026-05-10T12:00:00Z",
+  updated_at: "2026-05-10T12:00:00Z",
+};
+
+export const mockSyncResult = {
+  profile_name: "default",
+  status: "synced",
+  message: "Config synced to pod",
+};
+
+export const mockBatchSyncResult = {
+  synced: 2,
+  results: [
+    { profile_name: "default", status: "synced", message: "OK" },
+    { profile_name: "research-mode", status: "synced", message: "OK" },
+  ],
+};
+
+export const mockResolvedConfig = {
+  profile_name: "research-mode",
+  template_id: 1,
+  template_overrides: { model: { default: "glm-4.7", provider: "custom" } },
+  profile_overrides: { model: { default: "glm-4.7" } },
+  resolved_config: { model: { default: "glm-4.7", provider: "custom" } },
+  soul_md: "You are a professional research analyst.",
+};
+
+export const mockAuditLog = {
+  total: 5,
+  items: [
+    {
+      id: 1,
+      entity_type: "template",
+      entity_id: 1,
+      action: "update",
+      old_values: { id: 1, name: "researcher", display_name: "Researcher" },
+      new_values: { id: 1, name: "researcher", display_name: "Senior Researcher" },
+      changed_by: "admin-ui",
+      created_at: "2026-05-10T10:00:00Z",
+    },
+    {
+      id: 2,
+      entity_type: "profile",
+      entity_id: 101,
+      action: "create",
+      old_values: null,
+      new_values: { id: 101, profile_name: "default" },
+      changed_by: "admin-ui",
+      created_at: "2026-05-10T09:00:00Z",
+    },
+  ],
+};

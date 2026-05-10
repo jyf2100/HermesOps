@@ -48,6 +48,7 @@ from swarm_routes import router as swarm_router
 from terminal import router as terminal_router
 from file_browser import router as file_browser_router
 from kanban_routes import router as kanban_router
+from profile_routes import router as profile_router
 from skill_scanner import scan_skills
 from user_routes import router as user_router
 from database import AsyncSessionLocal
@@ -103,6 +104,7 @@ app.include_router(swarm_router)
 app.include_router(terminal_router)
 app.include_router(file_browser_router)
 app.include_router(kanban_router)
+app.include_router(profile_router)
 app.include_router(user_router)
 
 
@@ -269,6 +271,8 @@ async def _startup_cleanup():
             if cleanup_expired_user_tokens is not None:
                 cleanup_expired_user_tokens()
     asyncio.create_task(_sweep())
+    # P2.9: Start background sync retry
+    asyncio.create_task(_retry_failed_syncs())
 
     # Swarm Redis init
     redis_url = os.environ.get("SWARM_REDIS_URL", "")
@@ -281,6 +285,64 @@ async def _startup_cleanup():
             app.state.swarm_redis = None
     else:
         app.state.swarm_redis = None
+
+
+# ---------------------------------------------------------------------------
+# P2.9: Background sync retry for error-state profiles
+# ---------------------------------------------------------------------------
+
+async def _retry_failed_syncs():
+    """Background task: retry profiles stuck in error state every 5 minutes."""
+    from database import AsyncSessionLocal
+    from db_models import AgentProfile, ProfileTemplate
+    from profile_utils import get_sync_lock, sync_profile_to_pod
+    from sqlalchemy import select
+
+    _RETRY_CONCURRENCY = 3
+    sem = asyncio.Semaphore(_RETRY_CONCURRENCY)
+
+    async def _retry_one(p: AgentProfile) -> bool:
+        async with sem:
+            lock = get_sync_lock(p.agent_number, p.profile_name)
+            async with lock:
+                async with AsyncSessionLocal() as session:
+                    fresh_result = await session.execute(
+                        select(AgentProfile).where(AgentProfile.id == p.id)
+                    )
+                    fresh = fresh_result.scalar_one_or_none()
+                    if fresh is None or fresh.sync_status != "error":
+                        return False
+
+                    template = None
+                    if fresh.template_id is not None:
+                        template = await session.get(ProfileTemplate, fresh.template_id)
+
+                    await sync_profile_to_pod(
+                        fresh.agent_number, fresh, template, session
+                    )
+                    return True
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(AgentProfile)
+                    .where(AgentProfile.sync_status == "error")
+                    .limit(20)
+                )
+                profiles = result.scalars().all()
+
+            if profiles:
+                results = await asyncio.gather(
+                    *[_retry_one(p) for p in profiles], return_exceptions=True
+                )
+                retried = sum(1 for r in results if r is True)
+                logger.info("Sync retry: %d/%d profiles re-synced", retried, len(profiles))
+        except Exception as exc:
+            logger.warning("Sync retry loop error: %s", exc)
+
+        await asyncio.sleep(300)  # 5 minutes
+
 
 
 @app.on_event("startup")

@@ -555,7 +555,7 @@ export interface ResourceSpec {
 // API methods
 // ---------------------------------------------------------------------------
 
-import type { KanbanTask, KanbanComment, KanbanStats } from "../components/kanban/kanban-types";
+import type { KanbanTask, KanbanComment, KanbanStats, AssigneeProfile } from "../components/kanban/kanban-types";
 
 export const adminApi = {
   // -- Auth --
@@ -1012,7 +1012,7 @@ export const adminApi = {
 
     createTask(
       agentId: number,
-      data: { title: string; description?: string; priority?: number; labels?: string[] }
+      data: { title: string; description?: string; priority?: number; labels?: string[]; parents?: string[] }
     ) {
       return adminFetch<KanbanTask>(`/agents/${agentId}/kanban/tasks`, {
         method: "POST",
@@ -1050,6 +1050,13 @@ export const adminApi = {
       return adminFetch<void>(`/agents/${agentId}/kanban/dispatch`, {
         method: "POST",
       });
+    },
+
+    async getAssignees(agentId: number) {
+      const data = await adminFetch<{ assignees: AssigneeProfile[] }>(
+        `/agents/${agentId}/kanban/assignees`
+      );
+      return Array.isArray(data?.assignees) ? data.assignees : [];
     },
   },
 };

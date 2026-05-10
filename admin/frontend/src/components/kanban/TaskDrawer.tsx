@@ -3,6 +3,7 @@ import { useI18n } from "../../hooks/useI18n";
 import type { KanbanTask, KanbanTaskDetail, KanbanComment, KanbanStatus } from "./kanban-types";
 import { adminFetch } from "../../lib/admin-api";
 import { showToast } from "../../lib/toast";
+import { useKanbanBoard } from "../../stores/kanbanBoard";
 
 interface TaskDrawerProps {
   task: KanbanTask | null;
@@ -18,7 +19,7 @@ const STATUS_KEYS: { value: KanbanStatus; labelKey: keyof import("../../i18n/zh"
   { value: "running", labelKey: "kanbanRunning" },
   { value: "done", labelKey: "kanbanDone" },
   { value: "blocked", labelKey: "kanbanBlocked" },
-  { value: "archived", labelKey: "kanbanBlocked" },
+  { value: "archived", labelKey: "kanbanArchived" },
 ];
 
 function formatTimestamp(ts: number | null | undefined): string {
@@ -37,6 +38,11 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
   const [commentInput, setCommentInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [taskDetailData, setTaskDetailData] = useState<KanbanTaskDetail | null>(null);
+
+  const assignees = useKanbanBoard((s) => s.assignees);
+  const fetchAssignees = useKanbanBoard((s) => s.fetchAssignees);
+  const boardTasks = useKanbanBoard((s) => s.tasks);
 
   useEffect(() => {
     if (!task) return;
@@ -45,15 +51,19 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
     setStatus(task.status);
     setPriority(task.priority ?? 2);
     setAssignee(task.assignee ?? "default");
+    setTaskDetailData(null);
 
     let cancelled = false;
     setCommentsLoading(true);
+    fetchAssignees(agentId);
     adminFetch<{ task: KanbanTaskDetail }>(
       `/agents/${agentId}/kanban/tasks/${task.id}`
     )
       .then((data) => {
         if (!cancelled) {
-          setComments(Array.isArray(data.task.comments) ? data.task.comments : []);
+          const detail = data.task;
+          setComments(Array.isArray(detail.comments) ? detail.comments : []);
+          setTaskDetailData(detail);
         }
       })
       .catch(() => { if (!cancelled) setComments([]); })
@@ -140,10 +150,10 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
     setStatus(newStatus);
   }
 
-  const taskDetail = task as KanbanTaskDetail | null;
-  const latestSummary = taskDetail?.latest_summary ?? null;
-  const taskResult = taskDetail?.result ?? null;
-  const lastFailureError = taskDetail?.last_failure_error ?? null;
+  const latestSummary = taskDetailData?.latest_summary ?? null;
+  const taskResult = taskDetailData?.result ?? null;
+  const lastFailureError = taskDetailData?.last_failure_error ?? null;
+  const detailLinks = taskDetailData?.links;
 
   return (
     <>
@@ -236,17 +246,84 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
 
               <div>
                 <label className="text-xs text-text-secondary block mb-1">{t.kanbanAssignee}</label>
-                <input
-                  type="text"
+                <select
                   value={assignee}
                   onChange={(e) => setAssignee(e.target.value)}
-                  placeholder="default"
-                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
-                />
+                  className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-cyan"
+                >
+                  <option value="default">default</option>
+                  {assignees.map((a) => (
+                    <option key={a.name} value={a.name} disabled={!a.on_disk}>
+                      {a.name} {!a.on_disk ? "(not on disk)" : ""}
+                    </option>
+                  ))}
+                </select>
                 <p className="text-[10px] text-text-secondary mt-1">
                   {t.kanbanAssigneeHint}
                 </p>
               </div>
+
+              {task.skills && task.skills.length > 0 && (
+                <div>
+                  <label className="text-xs text-text-secondary block mb-1">{t.kanbanSkills}</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {task.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-accent-pink/10 text-accent-pink border border-accent-pink/20"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dependencies */}
+              {(() => {
+                const parentItems = detailLinks?.parents?.length
+                  ? detailLinks.parents
+                  : (task.parents ?? []).map((id) => {
+                      const bt = boardTasks.find((b) => b.id === id);
+                      return { id, title: bt?.title ?? id, status: (bt?.status ?? "done") as KanbanStatus };
+                    });
+                const childItems = detailLinks?.children?.length
+                  ? detailLinks.children
+                  : (task.children ?? []).map((id) => {
+                      const bt = boardTasks.find((b) => b.id === id);
+                      return { id, title: bt?.title ?? id, status: (bt?.status ?? "done") as KanbanStatus };
+                    });
+                if (!parentItems.length && !childItems.length) return null;
+                return (
+                  <div>
+                    <label className="text-xs text-text-secondary block mb-1.5">{t.kanbanDependencies}</label>
+                    {parentItems.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-[10px] text-text-secondary">{t.kanbanUpstream}:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {parentItems.map((p) => (
+                            <span key={p.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${p.status === "done" ? "bg-success/10 text-success border-success/20" : "bg-accent-cyan/10 text-accent-cyan border-accent-cyan/20"}`}>
+                              {p.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {childItems.length > 0 && (
+                      <div>
+                        <span className="text-[10px] text-text-secondary">{t.kanbanDownstream}:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {childItems.map((c) => (
+                            <span key={c.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${c.status === "done" ? "bg-success/10 text-success border-success/20" : "bg-accent-pink/10 text-accent-pink border-accent-pink/20"}`}>
+                              {c.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="text-xs text-text-secondary space-y-1 border-t border-border pt-3">
                 <p>{t.kanbanId}: {task.id}</p>

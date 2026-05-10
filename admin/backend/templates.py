@@ -212,6 +212,30 @@ class TemplateGenerator:
                                 "timeoutSeconds": 10, "failureThreshold": 5,
                             },
                             "volumeMounts": [{"name": "hermes-data", "mountPath": "/opt/data"}],
+                        }, {
+                            "name": "dashboard",
+                            "image": "nousresearch/hermes-agent:latest",
+                            "imagePullPolicy": "IfNotPresent",
+                            "args": ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"],
+                            "ports": [{"containerPort": 9119}],
+                            "env": [
+                                {"name": "KANBAN_DB_PATH", "value": "/opt/data/kanban.db"},
+                            ],
+                            "readinessProbe": {
+                                "httpGet": {"path": "/api/plugins/kanban/board", "port": 9119},
+                                "initialDelaySeconds": 15, "periodSeconds": 30,
+                                "timeoutSeconds": 5, "failureThreshold": 6,
+                            },
+                            "livenessProbe": {
+                                "httpGet": {"path": "/api/plugins/kanban/board", "port": 9119},
+                                "initialDelaySeconds": 30, "periodSeconds": 30,
+                                "timeoutSeconds": 10, "failureThreshold": 5,
+                            },
+                            "resources": {
+                                "requests": {"cpu": "50m", "memory": "64Mi"},
+                                "limits": {"cpu": "200m", "memory": "256Mi"},
+                            },
+                            "volumeMounts": [{"name": "hermes-data", "mountPath": "/opt/data"}],
                         }],
                         "volumes": [{
                             "name": "hermes-data",
@@ -233,7 +257,10 @@ class TemplateGenerator:
             "metadata": {"name": name, "namespace": namespace},
             "spec": {
                 "type": "ClusterIP",
-                "ports": [{"name": "api", "port": 8642, "targetPort": 8642}],
+                "ports": [
+                    {"name": "api", "port": 8642, "targetPort": 8642},
+                    {"name": "dashboard", "port": 9119, "targetPort": 9119},
+                ],
                 "selector": {"app": name},
             },
         }

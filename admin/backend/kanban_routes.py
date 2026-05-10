@@ -1,9 +1,11 @@
 """Kanban proxy routes -- forwards admin requests to agent Dashboard sidecars."""
 import asyncio
+import json
 import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from sqlalchemy import select
 from starlette.responses import Response as StarletteResponse
 
 from auth import auth, get_effective_agent_id
@@ -149,6 +151,124 @@ async def kanban_add_comment(request: Request, agent_id: int, task_id: str = Pat
 async def kanban_stats(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: GET kanban statistics."""
     return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/stats")
+
+
+@router.get("/assignees", dependencies=[auth])
+async def kanban_assignees(request: Request, agent_id: int) -> StarletteResponse:
+    """Proxy: GET known assignee profiles and their task counts.
+
+    Auto-discovers profiles reported by the sidecar, syncing them with the
+    DB agent_profiles table and provisioning missing config files on the pod.
+    """
+    eff_id = get_effective_agent_id(request, agent_id)
+    resp = await _proxy(request, eff_id, "/api/plugins/kanban/assignees")
+
+    if resp.status_code != 200:
+        return resp
+
+    # Parse sidecar response
+    try:
+        data = json.loads(resp.body)
+        assignees = data.get("assignees", []) if isinstance(data, dict) else []
+    except (json.JSONDecodeError, AttributeError):
+        return resp
+
+    # Auto-discover: sync sidecar assignees with DB agent_profiles
+    try:
+        await _auto_discover_profiles(eff_id, assignees)
+        # Re-fetch to get updated on_disk status after sync
+        return await _proxy(request, eff_id, "/api/plugins/kanban/assignees")
+    except Exception as exc:
+        logger.warning("Auto-discover failed for agent %s: %s", eff_id, exc)
+        return resp
+
+
+async def _auto_discover_profiles(agent_number: int, assignees: list[dict]):
+    """Sync sidecar assignees with DB agent_profiles table."""
+    import re
+
+    from database import AsyncSessionLocal
+    from db_models import AgentProfile, ProfileTemplate
+    from profile_utils import get_sync_lock, sync_profile_to_pod
+
+    async with AsyncSessionLocal() as session:
+        # Get existing profiles for this agent
+        result = await session.execute(
+            select(AgentProfile).where(AgentProfile.agent_number == agent_number)
+        )
+        existing = {p.profile_name: p for p in result.scalars().all()}
+
+        # Get all templates for matching
+        tmpl_result = await session.execute(select(ProfileTemplate))
+        templates = {t.name: t for t in tmpl_result.scalars().all()}
+
+        need_sync = []  # profile IDs to sync after commit
+
+        for a in assignees:
+            name = a.get("name") if isinstance(a, dict) else None
+            if not name or name == "default":
+                continue
+            if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", name):
+                logger.warning("Skipping assignee with invalid name: %s", name)
+                continue
+
+            on_disk = a.get("on_disk", False) if isinstance(a, dict) else False
+
+            if name in existing:
+                # DB record exists — re-sync if pod doesn't have the files
+                profile = existing[name]
+                needs_resync = not on_disk
+                if needs_resync:
+                    need_sync.append(profile.id)
+            else:
+                # No DB record — create one
+                template = templates.get(name)
+                profile = AgentProfile(
+                    agent_number=agent_number,
+                    profile_name=name,
+                    template_id=template.id if template else None,
+                    display_name=template.display_name if template else "",
+                    config_overrides=template.config_overrides if template else {},
+                    soul_md=template.soul_md if template else None,
+                    sync_status="pending",
+                )
+                session.add(profile)
+                await session.flush()  # Get the ID without committing
+                if not on_disk:
+                    need_sync.append(profile.id)
+
+        # Single commit for all new profiles
+        await session.commit()
+
+    # Sync outside the transaction to avoid holding DB session during K8s I/O
+    for profile_id in need_sync:
+        # Look up profile_name for lock key (short-lived session, no heavy I/O)
+        async with AsyncSessionLocal() as lookup:
+            r = await lookup.execute(
+                select(AgentProfile.profile_name).where(AgentProfile.id == profile_id)
+            )
+            row = r.fetchone()
+            if row is None:
+                continue
+            p_name = row[0]
+
+        # Acquire per-profile lock BEFORE opening sync session
+        lock = get_sync_lock(agent_number, p_name)
+        async with lock:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(AgentProfile).where(AgentProfile.id == profile_id)
+                )
+                fresh = result.scalar_one_or_none()
+                if fresh is None:
+                    continue
+
+                # Re-fetch template in fresh session
+                template = None
+                if fresh.template_id is not None:
+                    template = await session.get(ProfileTemplate, fresh.template_id)
+
+                await sync_profile_to_pod(agent_number, fresh, template, session)
 
 
 @router.post("/dispatch", dependencies=[auth])

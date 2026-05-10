@@ -1,7 +1,7 @@
 """ORM models for Hermes Admin user management."""
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -97,3 +97,59 @@ class ReportIdRecord(Base):
     skills_count = Column(Integer, default=0)
     tags_aggregated = Column(JSONB, default=list)
     processed_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProfileTemplate(Base):
+    """Reusable profile templates that define config overrides and soul prompts."""
+    __tablename__ = "profile_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(64), unique=True, nullable=False)
+    display_name = Column(String(100), default="")
+    description = Column(Text, default="")
+    config_overrides = Column(JSONB, default=dict, server_default="{}", nullable=False)
+    soul_md = Column(Text, nullable=True)
+    is_builtin = Column(Boolean, default=False, server_default="false", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AgentProfile(Base):
+    """Per-agent profile assignment, optionally derived from a template."""
+    __tablename__ = "agent_profiles"
+    __table_args__ = (
+        UniqueConstraint("agent_number", "profile_name", name="uq_agent_profiles_agent_name"),
+        Index("ix_agent_profiles_template_id", "template_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_number = Column(Integer, nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("profile_templates.id", ondelete="SET NULL"), nullable=True)
+    profile_name = Column(String(64), nullable=False)
+    display_name = Column(String(100), default="")
+    config_overrides = Column(JSONB, default=dict, server_default="{}", nullable=False)
+    soul_md = Column(Text, nullable=True)
+    sync_status = Column(String(16), default="pending", server_default="pending", nullable=False)
+    sync_error = Column(Text, nullable=True)
+    config_hash = Column(String(64), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ProfileAuditLog(Base):
+    """Audit log for profile/template CUD operations."""
+    __tablename__ = "profile_audit_log"
+    __table_args__ = (
+        Index("ix_audit_entity", "entity_type", "entity_id"),
+        Index("ix_audit_created", "created_at", postgresql_using="btree"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entity_type = Column(String(16), nullable=False)  # 'template' | 'profile'
+    entity_id = Column(Integer, nullable=False)
+    action = Column(String(16), nullable=False)  # 'create' | 'update' | 'delete'
+    old_values = Column(JSONB, nullable=True)
+    new_values = Column(JSONB, nullable=True)
+    changed_by = Column(String(64), default="admin-ui")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

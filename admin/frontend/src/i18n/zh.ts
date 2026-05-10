@@ -64,6 +64,7 @@ export interface Translations {
   events: string;
   health: string;
   kanban: string;
+  profiles: string;
   // Overview Tab
   podInfo: string;
   podName: string;
@@ -588,6 +589,7 @@ export interface Translations {
   kanbanRunning: string;
   kanbanDone: string;
   kanbanBlocked: string;
+  kanbanArchived: string;
   kanbanDispatch: string;
   kanbanDispatching: string;
   kanbanNoTasksToDispatch: string;
@@ -640,6 +642,74 @@ export interface Translations {
   kanbanCreated: string;
   kanbanCompleted: string;
   kanbanBlockedReason: string;
+  kanbanSkills: string;
+  kanbanSkillsPlaceholder: string;
+  kanbanSkillsHint: string;
+  kanbanSkillsSuggested: string;
+  kanbanSkillsApply: string;
+  kanbanAssigneeSelect: string;
+  kanbanAssigneeLoading: string;
+  kanbanAssigneeCustom: string;
+  kanbanAssigneeLoad: string;
+  kanbanParents: string;
+  kanbanParentsPlaceholder: string;
+  kanbanParentsHint: string;
+  kanbanParentBadge: string;
+  kanbanParentDone: string;
+  kanbanChildBadge: string;
+  kanbanProgress: string;
+  kanbanDependencies: string;
+  kanbanUpstream: string;
+  kanbanDownstream: string;
+  kanbanNoDependencies: string;
+  kanbanOrchestrate: string;
+  kanbanOrchestrateHint: string;
+  kanbanAdvanced: string;
+  kanbanAdvancedCount: string;
+
+  // Profile Templates
+  profileTemplates: string;
+  profileTemplateName: string;
+  profileTemplateDisplayName: string;
+  profileTemplateDescription: string;
+  profileTemplateBuiltin: string;
+  profileTemplateCustom: string;
+  profileTemplateConfig: string;
+  profileTemplateSoul: string;
+  profileTemplateClone: string;
+  profileTemplateCreate: string;
+  profileTemplateEdit: string;
+  profileTemplateDelete: string;
+  profileTemplateDeleteConfirm: string;
+  profileTemplateNoTemplates: string;
+
+  // Agent Profiles
+  profileList: string;
+  profileName: string;
+  profileTemplate: string;
+  profileSyncStatus: string;
+  profileSyncPending: string;
+  profileSyncSynced: string;
+  profileSyncFailed: string;
+  profileSyncToPod: string;
+  profileSyncing: string;
+  profileSyncAll: string;
+  profileSyncSuccess: string;
+  profileSyncFailedMsg: string;
+  profileConfig: string;
+  profileSoul: string;
+  profileCreate: string;
+  profileEdit: string;
+  profileDelete: string;
+  profileDeleteConfirm: string;
+  profileNoProfiles: string;
+  profileResolvedConfig: string;
+  profileLastSynced: string;
+
+  // Profile Sort
+  profileSortName: string;
+  profileSortStatus: string;
+  profileSortUpdated: string;
 }
 
 export const zh: Translations = {
@@ -714,6 +784,7 @@ export const zh: Translations = {
   events: "K8s Events",
   health: "健康",
   kanban: "看板",
+  profiles: "Profiles",
 
   // Overview Tab
   podInfo: "Pod 信息",
@@ -1256,6 +1327,7 @@ export const zh: Translations = {
   kanbanRunning: "执行中",
   kanbanDone: "已完成",
   kanbanBlocked: "已阻塞",
+  kanbanArchived: "已归档",
   kanbanDispatch: "派发",
   kanbanDispatching: "派发中...",
   kanbanNoTasksToDispatch: "无可派发任务",
@@ -1308,4 +1380,72 @@ export const zh: Translations = {
   kanbanCreated: "创建时间",
   kanbanCompleted: "完成时间",
   kanbanBlockedReason: "阻塞原因",
+  kanbanSkills: "技能",
+  kanbanSkillsPlaceholder: "逗号分隔技能名称",
+  kanbanSkillsHint: "Worker 执行时额外加载的技能，如 translation、github-code-review",
+  kanbanSkillsSuggested: "{n} 个技能推荐",
+  kanbanSkillsApply: "一键应用",
+  kanbanAssigneeSelect: "选择执行者",
+  kanbanAssigneeLoading: "加载执行者列表...",
+  kanbanAssigneeCustom: "自定义输入",
+  kanbanAssigneeLoad: "当前负载",
+  kanbanParents: "上游任务",
+  kanbanParentsPlaceholder: "搜索任务...",
+  kanbanParentsHint: "选择上游任务，本任务将在所有上游完成后开始执行",
+  kanbanParentBadge: "等待 {n} 个上游完成",
+  kanbanParentDone: "上游已完成",
+  kanbanChildBadge: "{n} 个下游任务",
+  kanbanProgress: "{done}/{total} 已完成",
+  kanbanDependencies: "依赖关系",
+  kanbanUpstream: "上游任务",
+  kanbanDownstream: "下游任务",
+  kanbanNoDependencies: "无依赖关系",
+  kanbanOrchestrate: "自动拆解",
+  kanbanOrchestrateHint: "启用后，系统将根据任务描述自动生成子任务并分配给不同执行者",
+  kanbanAdvanced: "高级选项",
+  kanbanAdvancedCount: "{n} 项已配置",
+
+  // Profile Templates
+  profileTemplates: "角色模板",
+  profileTemplateName: "模板名称",
+  profileTemplateDisplayName: "显示名称",
+  profileTemplateDescription: "描述",
+  profileTemplateBuiltin: "内置",
+  profileTemplateCustom: "自定义",
+  profileTemplateConfig: "配置覆盖",
+  profileTemplateSoul: "角色设定 (SOUL.md)",
+  profileTemplateClone: "复制为自定义模板",
+  profileTemplateCreate: "创建模板",
+  profileTemplateEdit: "编辑模板",
+  profileTemplateDelete: "删除模板",
+  profileTemplateDeleteConfirm: "确定要删除此模板吗？",
+  profileTemplateNoTemplates: "暂无模板",
+
+  // Agent Profiles
+  profileList: "配置文件",
+  profileName: "Profile 名称",
+  profileTemplate: "关联模板",
+  profileSyncStatus: "同步状态",
+  profileSyncPending: "待同步",
+  profileSyncSynced: "已同步",
+  profileSyncFailed: "同步失败",
+  profileSyncToPod: "同步到 Pod",
+  profileSyncing: "同步中...",
+  profileSyncAll: "同步全部",
+  profileSyncSuccess: "同步成功",
+  profileSyncFailedMsg: "同步失败",
+  profileConfig: "配置覆盖",
+  profileSoul: "角色设定",
+  profileCreate: "创建 Profile",
+  profileEdit: "编辑 Profile",
+  profileDelete: "删除",
+  profileDeleteConfirm: "确定要删除此 Profile 吗？",
+  profileNoProfiles: "暂无 Profile",
+  profileResolvedConfig: "完整配置预览",
+  profileLastSynced: "上次同步",
+
+  // Profile Sort
+  profileSortName: "按名称",
+  profileSortStatus: "按状态",
+  profileSortUpdated: "按更新时间",
 };

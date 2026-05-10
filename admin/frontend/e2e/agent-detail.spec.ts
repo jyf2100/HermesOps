@@ -49,8 +49,8 @@ test.describe("Agent Detail", () => {
 
   test("shows tab bar with all tabs", async ({ page }) => {
     await goToDetail(page);
-    await expect(page.getByText("概览")).toBeVisible();
-    await expect(page.getByText("K8s Events")).toBeVisible();
+    await expect(page.getByText("概览").first()).toBeVisible();
+    await expect(page.getByText("K8s Events").first()).toBeVisible();
   });
 
   test("overview tab shows resource usage", async ({ page }) => {
