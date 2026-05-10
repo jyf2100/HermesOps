@@ -3,6 +3,7 @@ import { useKanbanBoard } from "../../stores/kanbanBoard";
 import { showToast } from "../../lib/toast";
 import { adminFetch } from "../../lib/admin-api";
 import { useI18n } from "../../hooks/useI18n";
+import { ModalOverlay } from "../shared/ModalOverlay";
 import { AgentProfileData } from "../../types/profile";
 
 interface SkillEntry {
@@ -180,21 +181,11 @@ export function CreateTaskModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      role="dialog"
-      aria-modal="true"
+    <ModalOverlay
+      onClose={handleClose}
+      className="w-full max-w-lg max-h-[90vh]"
       aria-labelledby="create-task-title"
-      tabIndex={-1}
-      onClick={handleClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") handleClose();
-      }}
     >
-      <div
-        className="bg-surface border border-border rounded-lg w-full max-w-lg max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Fixed header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h3
@@ -634,7 +625,6 @@ export function CreateTaskModal({
             {submitting ? t.kanbanCreating : t.kanbanCreateTask}
           </button>
         </div>
-      </div>
-    </div>
+      </ModalOverlay>
   );
 }

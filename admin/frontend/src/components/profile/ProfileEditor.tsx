@@ -3,6 +3,7 @@ import { adminFetch } from "../../lib/admin-api";
 import { useI18n } from "../../hooks/useI18n";
 import { showToast } from "../../lib/toast";
 import { AgentProfileData, ProfileTemplateData } from "../../types/profile";
+import { ModalOverlay } from "../shared/ModalOverlay";
 
 // ---------------------------------------------------------------------------
 // ProfileEditor
@@ -162,21 +163,8 @@ export function ProfileEditor({
   // ----- Render -----
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      data-testid="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      tabIndex={-1}
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div
-        className="bg-surface border border-border rounded-lg w-full max-w-2xl max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <ModalOverlay onClose={onClose} className="w-full max-w-2xl max-h-[85vh]">
+      {/* Header */}
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h3 className="text-lg font-medium text-text-primary">
@@ -359,7 +347,6 @@ export function ProfileEditor({
             {saving ? t.loading : t.save}
           </button>
         </div>
-      </div>
-    </div>
+      </ModalOverlay>
   );
 }

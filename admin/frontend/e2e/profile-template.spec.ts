@@ -212,8 +212,10 @@ test.describe("Profile Template CRUD (Backend Integration)", () => {
     await page.click('button:has-text("Create Profile")');
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
-    // Dispatch click directly on the backdrop overlay
-    await page.dispatchEvent('[data-testid="modal-backdrop"]', 'click');
+    // NOTE: Uses dispatchEvent instead of .click() because headless Chromium's
+    // hit-testing on fixed-position overlays is unreliable. This verifies the
+    // React onClick handler fires correctly but does NOT test z-index occlusion.
+    await page.dispatchEvent('[data-testid="modal-root"]', 'click');
     await expect(page.locator('[role="dialog"]')).not.toBeVisible();
   });
 
