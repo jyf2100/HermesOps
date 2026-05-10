@@ -51,8 +51,8 @@ cd admin/frontend
 npx playwright install chromium
 npm run test:e2e       # Uses route interception, no real backend needed
 
-# Docker build (for K8s deployment)
-cd admin && docker build -f backend/Dockerfile -t hermes-admin:latest .
+# Docker build (for K8s deployment) — requires BuildKit
+cd admin && docker build -f backend/Dockerfile --build-context tools=../tools -t hermes-admin:latest .
 docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 ```
 

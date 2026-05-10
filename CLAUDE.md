@@ -22,8 +22,8 @@ hermes gateway             # Messaging gateway
 docker build -t hermes-agent .
 docker-compose up
 
-# Admin panel (K8s)
-cd admin && docker build -f backend/Dockerfile -t hermes-admin:latest .
+# Admin panel (K8s) — requires BuildKit
+cd admin && docker build -f backend/Dockerfile --build-context tools=../tools -t hermes-admin:latest .
 docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 kubectl apply -k kubernetes/
 ```

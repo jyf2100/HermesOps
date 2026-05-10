@@ -30,6 +30,7 @@ import { WeChatQRModal } from "../components/WeChatQRModal";
 import { TerminalTab } from "../components/TerminalTab";
 import { KanbanTab } from "../components/kanban/KanbanTab";
 import { ProfileList } from "../components/profile/ProfileList";
+import { AgentSkillsTab } from "../components/hub/AgentSkillsTab";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,7 +61,7 @@ function logLineColor(line: string): string {
 // Tab definitions
 // ---------------------------------------------------------------------------
 
-const TAB_IDS = ["overview", "config", "logs", "events", "health", "terminal", "kanban", "profiles"] as const;
+const TAB_IDS = ["overview", "config", "logs", "events", "health", "terminal", "kanban", "profiles", "skills"] as const;
 type TabId = (typeof TAB_IDS)[number];
 
 // ---------------------------------------------------------------------------
@@ -293,6 +294,10 @@ export function AgentDetailPage() {
 
       {activeTab === "profiles" && (
         <ProfileList agentId={agentId} />
+      )}
+
+      {activeTab === "skills" && (
+        <AgentSkillsTab agentId={agentId} isRunning={agent?.status === "running"} />
       )}
 
       {/* WeChat QR Modal */}

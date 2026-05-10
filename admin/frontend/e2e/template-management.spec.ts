@@ -7,6 +7,8 @@ import {
   mockClonedTemplate,
   mockClusterStatus,
   mockEmptyAgentList,
+  mockSkillsSummary,
+  mockEmptySkillsSummary,
 } from "./fixtures/mock-data";
 
 // ---------------------------------------------------------------------------
@@ -80,7 +82,7 @@ test.describe("Template Management Page", () => {
     await expect(page.locator('text="Deep research and analysis template"')).toBeVisible();
   });
 
-  test("shows Templates tab as active and Skills tab as disabled", async ({ page }) => {
+  test("shows Templates tab as active and Skills tab is enabled", async ({ page }) => {
     await goToTemplates(page);
 
     // Templates tab is active (has border-accent-cyan)
@@ -88,9 +90,10 @@ test.describe("Template Management Page", () => {
     await expect(templatesTab).toBeVisible();
     expect(await templatesTab.getAttribute("class")).toContain("border-accent-cyan");
 
-    // Skills tab is disabled
+    // Skills tab is enabled and clickable
     const skillsTab = page.locator('button:has-text("Skills")');
-    await expect(skillsTab).toBeDisabled();
+    await expect(skillsTab).toBeVisible();
+    await expect(skillsTab).toBeEnabled();
   });
 
   // ----- Filter bar -----
@@ -546,6 +549,319 @@ test.describe("Template Management Page", () => {
     await expect(page.locator('text="Template Library"')).toBeVisible();
 
     expect(page.url()).toContain("/admin/templates");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2: Skills Management Tab
+// ---------------------------------------------------------------------------
+
+test.describe("Skills Management Tab", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdminEn(page);
+  });
+
+  // Helper: set up routes and navigate, optionally override skills-summary
+  async function goToTemplatesWithSkills(
+    page: import("@playwright/test").Page,
+    overrides?: {
+      templates?: unknown;
+      skillsSummary?: unknown;
+    }
+  ) {
+    await goToTemplates(page, { templates: overrides?.templates });
+    // Register skills-summary AFTER goToTemplates so the more specific route wins
+    await page.route("**/admin/api/profile-templates/skills-summary", (route) => {
+      return route.fulfill({ json: overrides?.skillsSummary ?? mockSkillsSummary });
+    });
+  }
+
+  // ----- Tab switching -----
+
+  test("switching to Skills tab shows skill cards", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+
+    // Click Skills tab
+    await page.click('button:has-text("Skills")');
+
+    // Should show skill cards
+    const cards = page.locator("article");
+    await expect(cards).toHaveCount(3);
+
+    // First skill (most templates) should be web-search
+    await expect(cards.first().locator("text=web-search")).toBeVisible();
+  });
+
+  test("switching back to Templates tab restores template view", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+
+    // Switch to Skills
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator("article").first().locator("text=web-search")).toBeVisible();
+
+    // Switch back
+    await page.click('button:has-text("Templates")');
+    await expect(page.locator("article")).toHaveCount(3);
+    await expect(page.locator('text="Researcher"').first()).toBeVisible();
+  });
+
+  // ----- Lazy loading -----
+
+  test("skills-summary API is not called on initial page load", async ({ page }) => {
+    await goToTemplates(page);
+    let skillsCallCount = 0;
+    await page.route("**/admin/api/profile-templates/skills-summary", (route) => {
+      skillsCallCount++;
+      return route.fulfill({ json: mockSkillsSummary });
+    });
+
+    // Skills API should not have been called
+    expect(skillsCallCount).toBe(0);
+  });
+
+  test("skills-summary API is called only once on first tab switch", async ({ page }) => {
+    await goToTemplates(page);
+    let skillsCallCount = 0;
+    await page.route("**/admin/api/profile-templates/skills-summary", (route) => {
+      skillsCallCount++;
+      return route.fulfill({ json: mockSkillsSummary });
+    });
+
+    // Switch to Skills
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator("article").first()).toBeVisible();
+    expect(skillsCallCount).toBe(1);
+
+    // Switch back then to Skills again - should NOT re-fetch
+    await page.click('button:has-text("Templates")');
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator("article").first()).toBeVisible();
+    expect(skillsCallCount).toBe(1);
+  });
+
+  // ----- Skill cards rendering -----
+
+  test("each skill card displays name and template count", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    const cards = page.locator("article");
+
+    // web-search: used by 2 templates
+    await expect(cards.nth(0).locator("text=web-search")).toBeVisible();
+    await expect(cards.nth(0).locator("text=/2 template/")).toBeVisible();
+
+    // code-interpreter: used by 1 template
+    await expect(cards.nth(1).locator("text=code-interpreter")).toBeVisible();
+    await expect(cards.nth(1).locator("text=/1 template/")).toBeVisible();
+  });
+
+  // ----- Empty state -----
+
+  test("shows empty state when no skills are configured", async ({ page }) => {
+    await goToTemplatesWithSkills(page, { skillsSummary: mockEmptySkillsSummary });
+
+    await page.click('button:has-text("Skills")');
+
+    await expect(page.locator("article")).toHaveCount(0);
+    await expect(page.locator("text=/No skills configured/")).toBeVisible();
+  });
+
+  // ----- Error state -----
+
+  test("shows error state when skills-summary API fails and retries", async ({ page }) => {
+    await goToTemplates(page);
+    let callCount = 0;
+    await page.route("**/admin/api/profile-templates/skills-summary", (route) => {
+      callCount++;
+      if (callCount === 1) {
+        return route.fulfill({ status: 500, json: { detail: "Server error" } });
+      }
+      return route.fulfill({ json: mockSkillsSummary });
+    });
+
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator('button:has-text("Retry")')).toBeVisible();
+
+    // Click retry
+    await page.click('button:has-text("Retry")');
+    await expect(page.locator("article")).toHaveCount(3);
+  });
+
+  // ----- Skill → Template filter -----
+
+  test("clicking skill card switches to Templates tab and filters", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Click web-search (template_ids: [1, 2])
+    await page.locator("article").first().click();
+
+    // Should be on Templates tab
+    const templatesTab = page.locator('button:has-text("Templates")');
+    expect(await templatesTab.getAttribute("class")).toContain("border-accent-cyan");
+
+    // Should show filter tag
+    await expect(page.locator("text=/Filter.*web-search/")).toBeVisible();
+
+    // Should show only 2 filtered templates
+    const cards = page.locator("article");
+    await expect(cards).toHaveCount(2);
+  });
+
+  test("clicking skill with single template shows exactly one template", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Click file-upload (template_ids: [3])
+    await page.locator("article").nth(2).click();
+
+    const cards = page.locator("article");
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first().locator('text="My Custom"')).toBeVisible();
+  });
+
+  test("clearing skill filter restores all templates", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Click a skill to activate filter
+    await page.locator("article").first().click();
+    await expect(page.locator("text=/Filter.*web-search/")).toBeVisible();
+
+    // Clear filter
+    const filterTag = page.locator("text=/Filter.*web-search/");
+    const clearBtn = filterTag.locator("..").locator("button");
+    await clearBtn.click();
+
+    // Filter tag should be gone
+    await expect(page.locator("text=/Filter.*web-search/")).not.toBeVisible();
+
+    // All 3 templates should be visible
+    await expect(page.locator("article")).toHaveCount(3);
+  });
+
+  test("filter bar is hidden when skill filter is active", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Click a skill to activate filter
+    await page.locator("article").first().click();
+
+    // Filter bar buttons (All/Built-in/Custom) should not be visible
+    await expect(page.locator('button:has-text("All")')).toHaveCount(0);
+  });
+
+  // ----- Additional coverage -----
+
+  test("filter tag is not visible when no skill filter is active", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+
+    // No filter tag on default templates view
+    await expect(page.locator("text=/Filter:/")).toHaveCount(0);
+  });
+
+  test("search and filter bar still work after clearing skill filter", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Activate skill filter
+    await page.locator("article").first().click();
+    await expect(page.locator("text=/Filter.*web-search/")).toBeVisible();
+
+    // Clear it
+    const filterTag = page.locator("text=/Filter.*web-search/");
+    const clearBtn = filterTag.locator("..").locator("button");
+    await clearBtn.click();
+
+    // Filter bar should be back
+    await expect(page.locator('button:has-text("All")')).toBeVisible();
+
+    // Click Custom filter — should show 1 template
+    await page.click('button:has-text("Custom")');
+    await page.waitForTimeout(100);
+    const cards = page.locator("article");
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first().locator('text="Custom"')).toBeVisible();
+  });
+
+  test("skills data preserved when navigating to Skills tab again", async ({ page }) => {
+    let skillsCallCount = 0;
+    await goToTemplates(page);
+    await page.route("**/admin/api/profile-templates/skills-summary", (route) => {
+      skillsCallCount++;
+      return route.fulfill({ json: mockSkillsSummary });
+    });
+
+    // First visit to Skills tab
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator("article")).toHaveCount(3);
+    expect(skillsCallCount).toBe(1);
+
+    // Go to Templates tab
+    await page.click('button:has-text("Templates")');
+    await expect(page.locator('text="Researcher"').first()).toBeVisible();
+
+    // Return to Skills tab — should NOT re-fetch
+    await page.click('button:has-text("Skills")');
+    await expect(page.locator("article")).toHaveCount(3);
+    expect(skillsCallCount).toBe(1);
+  });
+
+  test("skill cards are sorted by template count descending", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    const cards = page.locator("article");
+    await expect(cards).toHaveCount(3);
+
+    // First card should be web-search (2 templates, highest count)
+    await expect(cards.nth(0).locator("text=web-search")).toBeVisible();
+    // Second: code-interpreter or file-upload (both 1 template, alphabetical)
+    await expect(cards.nth(1).locator("text=code-interpreter")).toBeVisible();
+    // Third: file-upload
+    await expect(cards.nth(2).locator("text=file-upload")).toBeVisible();
+  });
+
+  test("clicking same skill card twice filters correctly", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Click first skill
+    await page.locator("article").first().click();
+    await expect(page.locator("article")).toHaveCount(2);
+
+    // Clear filter
+    const clearBtn = page.locator("text=/Filter/").locator("..").locator("button");
+    await clearBtn.click();
+    await expect(page.locator("article")).toHaveCount(3);
+
+    // Go back to Skills and click same skill again
+    await page.click('button:has-text("Skills")');
+    await page.locator("article").first().click();
+    await expect(page.locator("article")).toHaveCount(2);
+  });
+
+  test("skills tab shows correct title", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Should show "Registered Skills" title
+    await expect(page.locator("text=Registered Skills")).toBeVisible();
+  });
+
+  test("skill card keyboard accessible via Enter key", async ({ page }) => {
+    await goToTemplatesWithSkills(page);
+    await page.click('button:has-text("Skills")');
+
+    // Focus first card and press Enter
+    const firstCard = page.locator("article").first();
+    await firstCard.focus();
+    await firstCard.press("Enter");
+
+    // Should switch to Templates tab with filter
+    await expect(page.locator("text=/Filter.*web-search/")).toBeVisible();
+    await expect(page.locator("article")).toHaveCount(2);
   });
 });
 

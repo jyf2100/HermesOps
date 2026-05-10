@@ -756,12 +756,61 @@ export interface Translations {
   templateSkillUsedBy: string;
   templateSkillFilter: string;
   templateClearFilter: string;
+  templateSkillsLoading: string;
+  templateSkillsLoadFailed: string;
+  templateSkillsError: string;
   templateJsonInvalid: string;
   templateProfileCount: string;
   templateRetry: string;
   templateViewConfig: string;
   templateBuiltinReadonly: string;
   templateSoulPlaceholder: string;
+  // Skills Hub Tab
+  skills: string;
+  skillsInstalled: string;
+  skillsBrowse: string;
+  skillsEmpty: string;
+  skillsNotRunning: string;
+  skillsStartAgent: string;
+  skillsSearch: string;
+  skillsSearchPlaceholder: string;
+  skillsInstall: string;
+  skillsUninstall: string;
+  skillsUpdate: string;
+  skillsCheckUpdates: string;
+  skillsUpdatesAvailable: string;
+  skillsNoUpdates: string;
+  skillsAudit: string;
+  skillsSourceHub: string;
+  skillsSourceBuiltin: string;
+  skillsSourceUnknown: string;
+  skillsTrustBuiltin: string;
+  skillsTrustTrusted: string;
+  skillsTrustCommunity: string;
+  skillsOrphan: string;
+  skillsInstalling: string;
+  skillsUninstalling: string;
+  skillsUpdating: string;
+  skillsScanning: string;
+  skillsWriting: string;
+  skillsVerifying: string;
+  skillsCompleted: string;
+  skillsFailed: string;
+  skillsAlreadyInstalled: string;
+  skillsForceInstall: string;
+  skillsForceConfirm: string;
+  skillsAuditTitle: string;
+  skillsAuditFindings: string;
+  skillsAuditNoIssues: string;
+  skillsAuditCritical: string;
+  skillsAuditContext: string;
+  skillsInstallConfirm: string;
+  skillsUninstallConfirm: string;
+  skillsNoResults: string;
+  skillsFetching: string;
+  skillsBrowseEmpty: string;
+  skillsFromSource: string;
+  skillsFilesCount: string;
 }
 
 export const zh: Translations = {
@@ -1542,14 +1591,63 @@ export const zh: Translations = {
   templateSkillsTab: "技能管理",
   templateTemplatesTab: "模板管理",
   templateSkillsTitle: "已注册技能",
-  templateSkillsEmpty: "暂无技能注册。启动 Agent 后自动发现技能。",
+  templateSkillsEmpty: "暂无模板配置技能。在模板的 config_overrides 中添加 skills 配置后，将在此展示。",
   templateSkillUsedBy: "被 {count} 个模板引用",
   templateSkillFilter: "筛选: {name}",
   templateClearFilter: "清除筛选",
+  templateSkillsLoading: "加载技能中...",
+  templateSkillsLoadFailed: "加载技能失败",
+  templateSkillsError: "加载技能数据失败",
   templateJsonInvalid: "配置覆盖 JSON 格式无效",
   templateProfileCount: "{count} 个 Profile",
   templateRetry: "重试",
   templateViewConfig: "查看完整配置",
   templateBuiltinReadonly: "内置：config_overrides 和 SOUL.md 对内置模板是只读的。",
   templateSoulPlaceholder: "自定义此模板的系统提示词...",
+  // Skills Hub Tab
+  skills: "技能",
+  skillsInstalled: "已安装",
+  skillsBrowse: "浏览 Hub",
+  skillsEmpty: "暂无已安装的技能",
+  skillsNotRunning: "Agent 未运行，技能管理功能不可用",
+  skillsStartAgent: "请先启动 Agent",
+  skillsSearch: "搜索技能",
+  skillsSearchPlaceholder: "输入技能名称搜索...",
+  skillsInstall: "安装",
+  skillsUninstall: "卸载",
+  skillsUpdate: "更新",
+  skillsCheckUpdates: "检查更新",
+  skillsUpdatesAvailable: "有 {count} 个技能可更新",
+  skillsNoUpdates: "所有技能均为最新版本",
+  skillsAudit: "审计",
+  skillsSourceHub: "Hub",
+  skillsSourceBuiltin: "内置",
+  skillsSourceUnknown: "未知",
+  skillsTrustBuiltin: "内置",
+  skillsTrustTrusted: "受信",
+  skillsTrustCommunity: "社区",
+  skillsOrphan: "孤立",
+  skillsInstalling: "安装中...",
+  skillsUninstalling: "卸载中...",
+  skillsUpdating: "更新中...",
+  skillsScanning: "安全扫描中...",
+  skillsWriting: "写入中...",
+  skillsVerifying: "验证中...",
+  skillsCompleted: "完成",
+  skillsFailed: "失败",
+  skillsAlreadyInstalled: "已安装",
+  skillsForceInstall: "强制安装",
+  skillsForceConfirm: "该技能已安装，是否覆盖？",
+  skillsAuditTitle: "安全审计",
+  skillsAuditFindings: "发现 {count} 个问题",
+  skillsAuditNoIssues: "未发现安全问题",
+  skillsAuditCritical: "发现严重安全问题",
+  skillsAuditContext: "扫描来源",
+  skillsInstallConfirm: "确认安装技能 {name} 到此 Agent？",
+  skillsUninstallConfirm: "确认从 Agent 卸载技能 {name}？",
+  skillsNoResults: "未找到匹配的技能",
+  skillsFetching: "获取中...",
+  skillsBrowseEmpty: "暂无可用的技能源",
+  skillsFromSource: "来源: {source}",
+  skillsFilesCount: "{count} 个文件",
 };

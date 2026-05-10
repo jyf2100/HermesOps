@@ -1,21 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { adminApi } from "../lib/admin-api";
+import type { SkillSummaryItem } from "../lib/admin-api";
 import { useI18n } from "../hooks/useI18n";
 import { showToast } from "../lib/toast";
 import type { ProfileTemplateData } from "../types/profile";
+import type { Translations } from "../i18n/zh";
 import { TemplateCard } from "../components/template/TemplateCard";
 import { TemplateEditor } from "../components/template/TemplateEditor";
+import { SkillCard } from "../components/template/SkillCard";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type FilterMode = "all" | "builtin" | "custom";
+type ActiveTab = "templates" | "skills";
 type EditorTarget =
   | null
   | { mode: "create" }
   | { mode: "edit"; template: ProfileTemplateData }
   | { mode: "clone"; template: ProfileTemplateData };
+
+interface SkillFilter {
+  name: string;
+  templateIds: number[];
+}
 
 // ---------------------------------------------------------------------------
 // TemplateListPage
@@ -24,7 +33,10 @@ type EditorTarget =
 export function TemplateListPage() {
   const { t } = useI18n();
 
-  // Data
+  // Tab
+  const [activeTab, setActiveTab] = useState<ActiveTab>("templates");
+
+  // Template data
   const [templates, setTemplates] = useState<ProfileTemplateData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +47,19 @@ export function TemplateListPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
+  // Skill data (lazy-loaded, null = not yet fetched)
+  const [skillsData, setSkillsData] = useState<SkillSummaryItem[] | null>(null);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const skillsStale = useRef(false);
+
+  // Skill → template filter
+  const [skillFilter, setSkillFilter] = useState<SkillFilter | null>(null);
+
   // Editor modal
   const [editorTarget, setEditorTarget] = useState<EditorTarget>(null);
 
-  // ----- Data loading -----
+  // ----- Template data loading -----
 
   const loadTemplates = useCallback(async (search?: string, isBuiltin?: boolean) => {
     setLoading(true);
@@ -69,6 +90,35 @@ export function TemplateListPage() {
     };
   }, []);
 
+  // ----- Skills data loading (lazy) -----
+
+  const loadSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    setSkillsError(null);
+    try {
+      const data = await adminApi.getSkillsSummary();
+      setSkillsData(data.skills ?? []);
+      skillsStale.current = false;
+    } catch (err) {
+      setSkillsError(err instanceof Error ? err.message : String(t.templateSkillsError));
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, [t.templateSkillsError]);
+
+  // Tab switch handler
+  function handleTabChange(tab: ActiveTab) {
+    setActiveTab(tab);
+    if (tab === "skills" && (skillsData === null || skillsStale.current) && !skillsLoading) {
+      loadSkills();
+    }
+  }
+
+  // Invalidate skills cache when templates change
+  function invalidateSkillsCache() {
+    skillsStale.current = true;
+  }
+
   // ----- Debounced search -----
 
   function handleSearchChange(value: string) {
@@ -79,7 +129,7 @@ export function TemplateListPage() {
     }, 300);
   }
 
-  // ----- Actions -----
+  // ----- Template actions -----
 
   function handleEdit(template: ProfileTemplateData) {
     setEditorTarget({ mode: "edit", template });
@@ -102,6 +152,7 @@ export function TemplateListPage() {
       showToast(t.templateDeleteSuccess);
       const isBuiltin = filter === "builtin" ? true : filter === "custom" ? false : undefined;
       loadTemplates(debouncedSearch || undefined, isBuiltin);
+      invalidateSkillsCache();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(t.errorGeneric), "error");
     }
@@ -111,6 +162,18 @@ export function TemplateListPage() {
     setEditorTarget(null);
     const isBuiltin = filter === "builtin" ? true : filter === "custom" ? false : undefined;
     loadTemplates(debouncedSearch || undefined, isBuiltin);
+    invalidateSkillsCache();
+  }
+
+  // ----- Skill → template filter -----
+
+  function handleSkillClick(skill: SkillSummaryItem) {
+    setSkillFilter({ name: skill.name, templateIds: skill.template_ids });
+    setActiveTab("templates");
+  }
+
+  function clearSkillFilter() {
+    setSkillFilter(null);
   }
 
   // ----- Derived state -----
@@ -118,6 +181,11 @@ export function TemplateListPage() {
   const existingNames = templates.map((tmpl) => tmpl.name);
   const isSearching = debouncedSearch.length > 0;
   const isEmpty = templates.length === 0 && !loading && !error;
+
+  // When skill filter is active, filter templates client-side
+  const displayedTemplates = skillFilter
+    ? templates.filter((tmpl) => skillFilter.templateIds.includes(tmpl.id))
+    : templates;
 
   // Active tab for filter bar
   const filterTabs: Array<{ key: FilterMode; label: string }> = [
@@ -134,106 +202,204 @@ export function TemplateListPage() {
       <div className="flex items-center gap-1 border-b border-border pb-0">
         <button
           type="button"
-          className="px-4 py-2 text-sm font-medium text-text-primary border-b-2 border-accent-cyan"
+          onClick={() => setActiveTab("templates")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "templates"
+              ? "text-text-primary border-accent-cyan"
+              : "text-text-secondary border-transparent hover:text-text-primary"
+          }`}
         >
           {t.templateTemplatesTab}
         </button>
         <button
           type="button"
-          disabled
-          className="px-4 py-2 text-sm text-text-secondary/50 cursor-not-allowed"
+          onClick={() => handleTabChange("skills")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === "skills"
+              ? "text-text-primary border-accent-cyan"
+              : "text-text-secondary border-transparent hover:text-text-primary"
+          }`}
         >
           {t.templateSkillsTab}
         </button>
       </div>
 
-      {/* Header: title + search + create */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h2 className="text-lg font-medium text-text-primary">
-          {t.templateList}
-        </h2>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <svg
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder={t.templateSearchPlaceholder}
-              className="h-8 pl-8 pr-3 w-48 text-xs bg-background border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
-            />
+      {/* Templates Tab */}
+      {activeTab === "templates" && (
+        <>
+          {/* Header: title + search + create */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="text-lg font-medium text-text-primary">
+              {t.templateList}
+            </h2>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <svg
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder={t.templateSearchPlaceholder}
+                  className="h-8 pl-8 pr-3 w-48 text-xs bg-background border border-border rounded text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditorTarget({ mode: "create" })}
+                className="h-8 px-3 text-xs rounded bg-accent-pink text-white hover:bg-accent-pink/90 transition-colors"
+              >
+                {t.templateCreate}
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setEditorTarget({ mode: "create" })}
-            className="h-8 px-3 text-xs rounded bg-accent-pink text-white hover:bg-accent-pink/90 transition-colors"
-          >
-            {t.templateCreate}
-          </button>
-        </div>
-      </div>
 
-      {/* Filter bar */}
-      <div className="flex items-center gap-1">
-        {filterTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setFilter(tab.key)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              filter === tab.key
-                ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
-                : "text-text-secondary hover:text-text-primary border border-transparent"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+          {/* Skill filter tag */}
+          {skillFilter && (
+            <div className="flex items-center gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20">
+                {t.templateSkillFilter.replace("{name}", skillFilter.name)}
+                <button
+                  type="button"
+                  onClick={clearSkillFilter}
+                  className="ml-0.5 hover:text-accent-pink transition-colors"
+                  aria-label={t.templateClearFilter}
+                >
+                  &times;
+                </button>
+              </span>
+            </div>
+          )}
 
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-sm text-text-secondary">{t.templateLoading}</p>
-        </div>
-      ) : error ? (
-        <div className="flex flex-col items-center gap-3 py-12">
-          <p className="text-sm text-accent-pink">{error}</p>
-          <button
-            type="button"
-            onClick={() => {
-              const isBuiltin = filter === "builtin" ? true : filter === "custom" ? false : undefined;
-              loadTemplates(debouncedSearch || undefined, isBuiltin);
-            }}
-            className="h-9 px-4 text-sm border border-accent-cyan text-accent-cyan hover:bg-accent-cyan/10 rounded transition-colors"
-          >
-            {t.templateRetry}
-          </button>
-        </div>
-      ) : isEmpty ? (
-        <div className="rounded-lg border border-border border-dashed bg-surface/50 p-12 text-center">
-          <p className="text-sm text-text-secondary">
-            {isSearching ? t.templateEmptySearch : t.templateEmptyState}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map((template) => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              t={t}
-              onEdit={() => handleEdit(template)}
-              onClone={() => handleClone(template)}
-              onDelete={() => handleDelete(template)}
-            />
-          ))}
-        </div>
+          {/* Filter bar (hidden when skill filter is active) */}
+          {!skillFilter && (
+            <div className="flex items-center gap-1">
+              {filterTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setFilter(tab.key)}
+                  className={`px-3 py-1 text-xs rounded transition-colors ${
+                    filter === tab.key
+                      ? "bg-accent-cyan/10 text-accent-cyan border border-accent-cyan/20"
+                      : "text-text-secondary hover:text-text-primary border border-transparent"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Template content */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-text-secondary">{t.templateLoading}</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <p className="text-sm text-accent-pink">{error}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  const isBuiltin = filter === "builtin" ? true : filter === "custom" ? false : undefined;
+                  loadTemplates(debouncedSearch || undefined, isBuiltin);
+                }}
+                className="h-9 px-4 text-sm border border-accent-cyan text-accent-cyan hover:bg-accent-cyan/10 rounded transition-colors"
+              >
+                {t.templateRetry}
+              </button>
+            </div>
+          ) : skillFilter ? (
+            displayedTemplates.length === 0 ? (
+              <div className="rounded-lg border border-border border-dashed bg-surface/50 p-12 text-center">
+                <p className="text-sm text-text-secondary">
+                  {t.templateEmptySearch}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {displayedTemplates.map((template) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    t={t}
+                    onEdit={() => handleEdit(template)}
+                    onClone={() => handleClone(template)}
+                    onDelete={() => handleDelete(template)}
+                  />
+                ))}
+              </div>
+            )
+          ) : isEmpty ? (
+            <div className="rounded-lg border border-border border-dashed bg-surface/50 p-12 text-center">
+              <p className="text-sm text-text-secondary">
+                {isSearching ? t.templateEmptySearch : t.templateEmptyState}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates.map((template) => (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  t={t}
+                  onEdit={() => handleEdit(template)}
+                  onClone={() => handleClone(template)}
+                  onDelete={() => handleDelete(template)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Skills Tab */}
+      {activeTab === "skills" && (
+        <>
+          <h2 className="text-lg font-medium text-text-primary">
+            {t.templateSkillsTitle}
+          </h2>
+
+          {skillsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-text-secondary">{t.templateSkillsLoading}</p>
+            </div>
+          ) : skillsError ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <p className="text-sm text-accent-pink">{skillsError}</p>
+              <button
+                type="button"
+                onClick={loadSkills}
+                className="h-9 px-4 text-sm border border-accent-cyan text-accent-cyan hover:bg-accent-cyan/10 rounded transition-colors"
+              >
+                {t.templateRetry}
+              </button>
+            </div>
+          ) : !skillsData || skillsData.length === 0 ? (
+            <div className="rounded-lg border border-border border-dashed bg-surface/50 p-12 text-center">
+              <p className="text-sm text-text-secondary">
+                {t.templateSkillsEmpty}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {skillsData.map((skill) => (
+                <SkillCard
+                  key={skill.name}
+                  name={skill.name}
+                  templateCount={skill.template_count}
+                  t={t}
+                  onClick={() => handleSkillClick(skill)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Editor modal */}

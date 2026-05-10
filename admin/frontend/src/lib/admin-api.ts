@@ -509,6 +509,103 @@ export interface SkillEntry {
   tags?: string[];
 }
 
+export interface SkillSummaryItem {
+  name: string;
+  template_ids: number[];
+  template_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Skills Hub
+// ---------------------------------------------------------------------------
+
+export interface HubSkillMeta {
+  name: string;
+  description: string;
+  source: string;
+  identifier: string;
+  trust_level: string | null;
+  repo?: string;
+  path?: string;
+  tags?: string[];
+  extra?: Record<string, unknown>;
+}
+
+export interface HubInstalledSkill {
+  name: string;
+  description: string;
+  version: string;
+  tags: string[];
+  source: string;
+  trust_level: string | null;
+  installed_at: string | null;
+  content_hash: string;
+  orphan: boolean;
+}
+
+export interface HubTask {
+  ok: boolean;
+  task_id: string;
+  status: string;
+  progress: number;
+  phase: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface HubSearchResult {
+  ok: boolean;
+  query: string;
+  source_filter: string;
+  count: number;
+  results: HubSkillMeta[];
+}
+
+export interface HubBrowseResult {
+  ok: boolean;
+  count: number;
+  source_counts: Record<string, number>;
+  timed_out: string[];
+  results: HubSkillMeta[];
+}
+
+export interface HubFetchResult {
+  ok: boolean;
+  cached: boolean;
+  name: string;
+  source: string;
+  identifier: string;
+  trust_level: string | null;
+  file_count: number;
+  total_size: number;
+  content_hash: string;
+  fetched_at: string;
+  scan?: { verdict: string; findings_count: number; summary: string };
+  files?: string[];
+}
+
+export interface HubAuditResult {
+  ok: boolean;
+  skill: string;
+  trust_level: string | null;
+  installed_at: string | null;
+  scan: {
+    verdict: string;
+    findings: Array<{ pattern_id: string; severity: string; category: string; file: string; line: number | null; description: string }>;
+    summary: string;
+  };
+  scan_context: string;
+  findings_count: number;
+  has_critical: boolean;
+}
+
+export interface HubCheckResult {
+  ok: boolean;
+  total: number;
+  updates_available: number;
+  items: Array<{ name: string; current_hash: string; upstream_hash: string | null; has_update: boolean }>;
+}
+
 
 // ---------------------------------------------------------------------------
 // File Browser
@@ -953,6 +1050,11 @@ export const adminApi = {
     return adminFetch("/agents/metadata");
   },
 
+  // -- Template Skills Summary --
+  getSkillsSummary(): Promise<{ skills: SkillSummaryItem[] }> {
+    return adminFetch("/profile-templates/skills-summary");
+  },
+
   // -- Agent Skills --
   getAgentSkills(agentId: number): Promise<SkillEntry[]> {
     return adminFetch(`/agents/${agentId}/skills`);
@@ -1111,6 +1213,66 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(body ?? {}),
     });
+  },
+
+  // -- Skills Hub --
+  hubSearch(query: string, source?: string, limit?: number): Promise<HubSearchResult> {
+    const qs = new URLSearchParams({ q: query });
+    if (source) qs.set("source", source);
+    if (limit) qs.set("limit", String(limit));
+    return adminFetch(`/hub/search?${qs}`);
+  },
+
+  hubBrowse(source?: string, limit?: number): Promise<HubBrowseResult> {
+    const qs = new URLSearchParams();
+    if (source) qs.set("source", source);
+    if (limit) qs.set("limit", String(limit));
+    return adminFetch(`/hub/browse?${qs}`);
+  },
+
+  hubFetch(skillName: string, source?: string, identifier?: string): Promise<HubFetchResult> {
+    const qs = new URLSearchParams();
+    if (source) qs.set("source", source);
+    if (identifier) qs.set("identifier", identifier);
+    return adminFetch(`/hub/fetch/${encodeURIComponent(skillName)}?${qs}`);
+  },
+
+  hubListInstalled(agentId: number): Promise<{ ok: boolean; running: boolean; skills: HubInstalledSkill[] }> {
+    return adminFetch(`/hub/agents/${agentId}/skills`);
+  },
+
+  hubInstall(agentId: number, identifier: string, force?: boolean): Promise<HubTask> {
+    return adminFetch(`/hub/agents/${agentId}/install`, {
+      method: "POST",
+      body: JSON.stringify({ identifier, force: force ?? false }),
+    });
+  },
+
+  hubUninstall(agentId: number, skillName: string): Promise<{ ok: boolean; skill: string; status: string }> {
+    return adminFetch(`/hub/agents/${agentId}/skills/${encodeURIComponent(skillName)}`, {
+      method: "DELETE",
+    });
+  },
+
+  hubCheckUpdates(agentId: number, name?: string): Promise<HubCheckResult> {
+    return adminFetch(`/hub/agents/${agentId}/check`, {
+      method: "POST",
+      body: JSON.stringify(name ? { name } : {}),
+    });
+  },
+
+  hubUpdate(agentId: number, skillName: string): Promise<HubTask> {
+    return adminFetch(`/hub/agents/${agentId}/update/${encodeURIComponent(skillName)}`, {
+      method: "POST",
+    });
+  },
+
+  hubAudit(agentId: number, skillName: string): Promise<HubAuditResult> {
+    return adminFetch(`/hub/agents/${agentId}/audit/${encodeURIComponent(skillName)}`);
+  },
+
+  hubTaskStatus(agentId: number, taskId: string): Promise<HubTask> {
+    return adminFetch(`/hub/agents/${agentId}/tasks/${taskId}`);
   },
 
 };

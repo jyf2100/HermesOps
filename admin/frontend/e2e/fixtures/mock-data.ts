@@ -608,3 +608,14 @@ export const mockAuditLog = {
     },
   ],
 };
+
+// -- Skills Summary --
+export const mockSkillsSummary = {
+  skills: [
+    { name: "web-search", template_ids: [1, 2], template_count: 2 },
+    { name: "code-interpreter", template_ids: [1], template_count: 1 },
+    { name: "file-upload", template_ids: [3], template_count: 1 },
+  ],
+};
+
+export const mockEmptySkillsSummary = { skills: [] };
