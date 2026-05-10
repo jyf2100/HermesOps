@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { adminFetch } from "../../lib/admin-api";
 import { useI18n } from "../../hooks/useI18n";
 import { showToast } from "../../lib/toast";
 import { AgentProfileData, ProfileTemplateData } from "../../types/profile";
 import { ModalOverlay } from "../shared/ModalOverlay";
+import { JsonEditor } from "../shared/JsonEditor";
+import { SoulMdEditor } from "../shared/SoulMdEditor";
 
 // ---------------------------------------------------------------------------
 // ProfileEditor
@@ -42,9 +45,6 @@ export function ProfileEditor({
   const [resolvedYaml, setResolvedYaml] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const [resolving, setResolving] = useState(false);
-
-  // Soul MD preview
-  const [showSoulPreview, setShowSoulPreview] = useState(false);
 
   // Submit state
   const [saving, setSaving] = useState(false);
@@ -233,6 +233,12 @@ export function ProfileEditor({
                 </option>
               ))}
             </select>
+            <Link
+              to="/templates"
+              className="text-[10px] text-accent-cyan hover:text-accent-cyan/80 ml-2"
+            >
+              {t.templateManageLink}
+            </Link>
             {templateId && (() => {
               const tmpl = templates.find((t) => String(t.id) === templateId);
               return tmpl?.description ? (
@@ -242,50 +248,20 @@ export function ProfileEditor({
           </div>
 
           {/* Config overrides */}
-          <div>
-            <label className="text-xs text-text-secondary block mb-1">
-              {t.profileConfig}
-            </label>
-            <textarea
-              value={configJson}
-              onChange={(e) => setConfigJson(e.target.value)}
-              rows={8}
-              spellCheck={false}
-              className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm font-[family-name:var(--font-mono)] text-text-primary resize-y placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
-              placeholder='{"model": {"default": "glm-4.7"}}'
-            />
-          </div>
+          <JsonEditor
+            value={configJson}
+            onChange={setConfigJson}
+            label={t.profileConfig}
+          />
 
           {/* SOUL.md */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-text-secondary">
-                {t.profileSoul}
-              </label>
-              {soulMd && (
-                <button
-                  type="button"
-                  onClick={() => setShowSoulPreview((v) => !v)}
-                  className="text-[10px] text-accent-cyan hover:text-accent-cyan/80"
-                >
-                  {showSoulPreview ? t.profileEdit : "Preview"}
-                </button>
-              )}
-            </div>
-            {showSoulPreview ? (
-              <pre className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-text-primary whitespace-pre-wrap max-h-48 overflow-auto">
-                {soulMd}
-              </pre>
-            ) : (
-              <textarea
-                value={soulMd}
-                onChange={(e) => setSoulMd(e.target.value)}
-                rows={6}
-                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-text-primary resize-y placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
-                placeholder="Custom SOUL.md content for this profile..."
-              />
-            )}
-          </div>
+          <SoulMdEditor
+            value={soulMd}
+            onChange={setSoulMd}
+            label={t.profileSoul}
+            previewLabel="Preview"
+            editLabel={t.profileEdit}
+          />
 
           {/* Resolved config preview (edit mode only) */}
           {isEdit && (

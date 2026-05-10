@@ -556,6 +556,7 @@ export interface ResourceSpec {
 // ---------------------------------------------------------------------------
 
 import type { KanbanTask, KanbanComment, KanbanStats, AssigneeProfile } from "../components/kanban/kanban-types";
+import type { ProfileTemplateData } from "../types/profile";
 
 export const adminApi = {
   // -- Auth --
@@ -1059,4 +1060,57 @@ export const adminApi = {
       return Array.isArray(data?.assignees) ? data.assignees : [];
     },
   },
+
+  // -- Profile Templates --
+  listProfileTemplates(params?: { is_builtin?: boolean; search?: string }): Promise<ProfileTemplateData[]> {
+    const query = new URLSearchParams();
+    if (params?.is_builtin !== undefined) query.set("is_builtin", String(params.is_builtin));
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString();
+    return adminFetch(`/profile-templates${qs ? `?${qs}` : ""}`);
+  },
+
+  createProfileTemplate(body: {
+    name: string;
+    display_name?: string;
+    description?: string;
+    config_overrides?: Record<string, unknown>;
+    soul_md?: string;
+  }): Promise<ProfileTemplateData> {
+    return adminFetch("/profile-templates", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  getProfileTemplate(id: number): Promise<ProfileTemplateData> {
+    return adminFetch(`/profile-templates/${id}`);
+  },
+
+  updateProfileTemplate(id: number, body: {
+    display_name?: string;
+    description?: string;
+    config_overrides?: Record<string, unknown>;
+    soul_md?: string;
+  }): Promise<{ template: ProfileTemplateData; affected_profiles: number }> {
+    return adminFetch(`/profile-templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteProfileTemplate(id: number): Promise<{ status: string }> {
+    return adminFetch(`/profile-templates/${id}`, { method: "DELETE" });
+  },
+
+  cloneProfileTemplate(id: number, body?: {
+    name?: string;
+    display_name?: string;
+  }): Promise<ProfileTemplateData> {
+    return adminFetch(`/profile-templates/${id}/clone`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    });
+  },
+
 };

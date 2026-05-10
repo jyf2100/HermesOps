@@ -710,6 +710,58 @@ export interface Translations {
   profileSortName: string;
   profileSortStatus: string;
   profileSortUpdated: string;
+
+  // Template Management Page
+  templateNav: string;
+  templateList: string;
+  templateCreate: string;
+  templateEdit: string;
+  templateClone: string;
+  templateDelete: string;
+  templateDeleteConfirm: string;
+  templateDeleteWarning: string;
+  templateCloneSuffix: string;
+  templateSaveSuccess: string;
+  templateCreateSuccess: string;
+  templateDeleteSuccess: string;
+  templateAffectedProfiles: string;
+  templateConfirmEdit: string;
+  templateSearchPlaceholder: string;
+  templateFilterAll: string;
+  templateFilterBuiltin: string;
+  templateFilterCustom: string;
+  templateEmptyState: string;
+  templateEmptySearch: string;
+  templateLoading: string;
+  templateLoadFailed: string;
+  templateName: string;
+  templateNamePlaceholder: string;
+  templateNameRequired: string;
+  templateNameInvalid: string;
+  templateNameExists: string;
+  templateDisplayName: string;
+  templateDisplayNamePlaceholder: string;
+  templateDescription: string;
+  templateDescriptionPlaceholder: string;
+  templateBuiltinBadge: string;
+  templateCustomBadge: string;
+  templateLinkedProfiles: string;
+  templateLastUpdated: string;
+  templateSkills: string;
+  templateManageLink: string;
+  templateSkillsTab: string;
+  templateTemplatesTab: string;
+  templateSkillsTitle: string;
+  templateSkillsEmpty: string;
+  templateSkillUsedBy: string;
+  templateSkillFilter: string;
+  templateClearFilter: string;
+  templateJsonInvalid: string;
+  templateProfileCount: string;
+  templateRetry: string;
+  templateViewConfig: string;
+  templateBuiltinReadonly: string;
+  templateSoulPlaceholder: string;
 }
 
 export const zh: Translations = {
@@ -1448,4 +1500,56 @@ export const zh: Translations = {
   profileSortName: "按名称",
   profileSortStatus: "按状态",
   profileSortUpdated: "按更新时间",
+
+  // Template Management Page
+  templateNav: "模板",
+  templateList: "模板库",
+  templateCreate: "新建模板",
+  templateEdit: "编辑模板",
+  templateClone: "克隆",
+  templateDelete: "删除模板",
+  templateDeleteConfirm: "确认删除模板 \"{name}\"？",
+  templateDeleteWarning: "此模板关联了 {count} 个 Profile。删除后，这些 Profile 将失去模板关联（template_id 置为 NULL），但其 config_overrides 不会改变，也不再跟随模板更新。",
+  templateCloneSuffix: " (副本)",
+  templateSaveSuccess: "模板已保存",
+  templateCreateSuccess: "模板已创建",
+  templateDeleteSuccess: "模板已删除",
+  templateAffectedProfiles: "已更新，影响 {count} 个 Profile",
+  templateConfirmEdit: "此修改将影响 {count} 个关联 Profile，是否继续？",
+  templateSearchPlaceholder: "搜索模板...",
+  templateFilterAll: "全部",
+  templateFilterBuiltin: "内置",
+  templateFilterCustom: "自定义",
+  templateEmptyState: "暂无模板",
+  templateEmptySearch: "未找到匹配的模板",
+  templateLoading: "加载模板中...",
+  templateLoadFailed: "加载模板失败",
+  templateName: "模板名称",
+  templateNamePlaceholder: "例如 my-template",
+  templateNameRequired: "模板名称为必填项",
+  templateNameInvalid: "只允许字母、数字、连字符和下划线（最长 64 字符）",
+  templateNameExists: "模板名称已存在",
+  templateDisplayName: "显示名称",
+  templateDisplayNamePlaceholder: "可选的显示名称",
+  templateDescription: "描述",
+  templateDescriptionPlaceholder: "模板的简要描述...",
+  templateBuiltinBadge: "内置",
+  templateCustomBadge: "自定义",
+  templateLinkedProfiles: "关联 Profile",
+  templateLastUpdated: "更新于",
+  templateSkills: "技能",
+  templateManageLink: "管理模板",
+  templateSkillsTab: "技能管理",
+  templateTemplatesTab: "模板管理",
+  templateSkillsTitle: "已注册技能",
+  templateSkillsEmpty: "暂无技能注册。启动 Agent 后自动发现技能。",
+  templateSkillUsedBy: "被 {count} 个模板引用",
+  templateSkillFilter: "筛选: {name}",
+  templateClearFilter: "清除筛选",
+  templateJsonInvalid: "配置覆盖 JSON 格式无效",
+  templateProfileCount: "{count} 个 Profile",
+  templateRetry: "重试",
+  templateViewConfig: "查看完整配置",
+  templateBuiltinReadonly: "内置：config_overrides 和 SOUL.md 对内置模板是只读的。",
+  templateSoulPlaceholder: "自定义此模板的系统提示词...",
 };

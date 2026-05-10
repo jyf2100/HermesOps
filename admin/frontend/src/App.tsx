@@ -7,6 +7,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
 import { FileBrowserPage } from "./pages/FileBrowserPage";
+import { TemplateListPage } from "./pages/TemplateListPage";
 import { SwarmGuard } from "./components/SwarmGuard";
 import { SwarmOverviewPage } from "./pages/swarm/SwarmOverviewPage";
 import { CrewListPage } from "./pages/swarm/CrewListPage";
@@ -39,6 +40,7 @@ function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/files" element={<FileBrowserPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/templates" element={<TemplateListPage />} />
           <Route
             element={
               <SwarmGuard>

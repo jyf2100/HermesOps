@@ -24,6 +24,7 @@ export interface ProfileTemplateData {
   config_overrides: Record<string, unknown>
   soul_md: string | null
   is_builtin: boolean
+  profile_count?: number
   created_at: string | null
   updated_at: string | null
 }
