@@ -57,10 +57,28 @@ spec:
               value: "http://172.32.153.184:40080"
             - name: ORCHESTRATOR_INTERNAL_URL
               value: "http://hermes-orchestrator:8080"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hub-github-token
+                  key: github-token
+                  optional: true
+            - name: HUB_CACHE_DIR
+              value: "/data/hermes/hub-cache"
+            - name: HERMES_OPTIONAL_SKILLS
+              value: "/app/optional-skills"
             - name: WEBUI_ADMIN_EMAIL
-              value: "rocju315@gmail.com"
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-admin-secret
+                  key: webui-admin-email
+                  optional: true
             - name: WEBUI_ADMIN_PASSWORD
-              value: "HermesAdmin2026!"
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-admin-secret
+                  key: webui-admin-password
+                  optional: true
           readinessProbe:
             httpGet:
               path: /health

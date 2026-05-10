@@ -129,19 +129,16 @@ class TestIgnoreFileWritten:
     def test_write_index_cache_creates_ignore_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
-        # Patch module-level paths
-        import tools.skills_hub as hub_mod
-        monkeypatch.setattr(hub_mod, "HERMES_HOME", tmp_path)
-        monkeypatch.setattr(hub_mod, "SKILLS_DIR", tmp_path / "skills")
-        monkeypatch.setattr(hub_mod, "HUB_DIR", tmp_path / "skills" / ".hub")
-        monkeypatch.setattr(
-            hub_mod, "INDEX_CACHE_DIR",
-            tmp_path / "skills" / ".hub" / "index-cache",
+        cache_dir = tmp_path / "skills" / ".hub" / "index-cache"
+        hub_dir = tmp_path / "skills" / ".hub"
+
+        import tools.skills_hub_core as core_mod
+        core_mod._write_index_cache(
+            "test_key", {"data": "test"},
+            cache_dir=cache_dir, hub_dir=hub_dir,
         )
 
-        hub_mod._write_index_cache("test_key", {"data": "test"})
-
-        ignore_file = tmp_path / "skills" / ".hub" / ".ignore"
+        ignore_file = hub_dir / ".ignore"
         assert ignore_file.exists(), ".ignore file should be created in .hub/"
         content = ignore_file.read_text()
         assert "*" in content, ".ignore should contain wildcard to exclude all files"
@@ -151,20 +148,16 @@ class TestIgnoreFileWritten:
     ):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
 
-        import tools.skills_hub as hub_mod
-        monkeypatch.setattr(hub_mod, "HERMES_HOME", tmp_path)
-        monkeypatch.setattr(hub_mod, "SKILLS_DIR", tmp_path / "skills")
-        monkeypatch.setattr(hub_mod, "HUB_DIR", tmp_path / "skills" / ".hub")
-        monkeypatch.setattr(
-            hub_mod, "INDEX_CACHE_DIR",
-            tmp_path / "skills" / ".hub" / "index-cache",
-        )
-
+        cache_dir = tmp_path / "skills" / ".hub" / "index-cache"
         hub_dir = tmp_path / "skills" / ".hub"
         hub_dir.mkdir(parents=True)
         ignore_file = hub_dir / ".ignore"
         ignore_file.write_text("# custom\ncustom-pattern\n")
 
-        hub_mod._write_index_cache("test_key", {"data": "test"})
+        import tools.skills_hub_core as core_mod
+        core_mod._write_index_cache(
+            "test_key", {"data": "test"},
+            cache_dir=cache_dir, hub_dir=hub_dir,
+        )
 
         assert ignore_file.read_text() == "# custom\ncustom-pattern\n"

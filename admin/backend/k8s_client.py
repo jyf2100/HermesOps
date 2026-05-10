@@ -308,7 +308,7 @@ class K8sClient:
         """Run a one-shot command in a pod and return (stdout, stderr)."""
         from kubernetes.stream import stream as k8s_stream
         try:
-            result = await asyncio.wait_for(
+            resp = await asyncio.wait_for(
                 asyncio.to_thread(
                     k8s_stream,
                     self._stream_api.connect_get_namespaced_pod_exec,
@@ -320,11 +320,25 @@ class K8sClient:
                     stdout=True,
                     stderr=True,
                     tty=False,
-                    _preload_content=True,
+                    _preload_content=False,
                 ),
                 timeout=15,
             )
-            return result, ""
+            # Read stdout and stderr separately from the websocket stream.
+            stdout_parts: list[str] = []
+            stderr_parts: list[str] = []
+            while resp.is_open():
+                resp.update(timeout=1)
+                if resp.peek_stdout():
+                    stdout_parts.append(resp.read_stdout())
+                if resp.peek_stderr():
+                    stderr_parts.append(resp.read_stderr())
+            # Drain any remaining data after the websocket closes.
+            if resp.peek_stdout():
+                stdout_parts.append(resp.read_stdout())
+            if resp.peek_stderr():
+                stderr_parts.append(resp.read_stderr())
+            return "".join(stdout_parts), "".join(stderr_parts)
         except Exception as e:
             return "", str(e)
 
@@ -382,25 +396,86 @@ class K8sClient:
         except Exception:
             return -1
 
-    async def read_file_from_pod(self, pod_name: str, path: str) -> tuple[bytes, str]:
-        """Read a file from a pod via exec. Returns (content_bytes, error_msg).
-        Uses base64 encoding to safely handle binary files.
-        Resolves symlinks inside the pod via realpath to prevent blocked-prefix bypass."""
-        from kubernetes.stream import stream as k8s_stream
-        import base64
+    # Path whitelist used for pod file operations (read, write, delete).
+    _ALLOWED_PATH_PREFIXES = ("/home", "/tmp", "/var/log", "/opt/hermes", "/opt/data")
+
+    async def _validate_pod_path(
+        self, pod_name: str, path: str, mode: str = "read"
+    ) -> str:
+        """Resolve *path* inside the pod via ``realpath`` and verify it falls
+        under an allowed prefix.  Returns the resolved real path on success.
+
+        ``mode`` is one of ``"read"`` or ``"write"``.  Both currently use the
+        same whitelist so that callers can freely read/write/delete within the
+        standard directories.  Route-level code may impose stricter checks on
+        top of this (e.g. Hub writes limited to ``/opt/data/skills/``).
+
+        Raises ``ValueError`` when the resolved path is outside the whitelist.
+        """
         import shlex
         safe = shlex.quote(path)
-        cmd = ["sh", "-c", f"""realpath=$(/usr/bin/realpath {safe} 2>/dev/null || echo {safe})
+        prefixes = " ".join(self._ALLOWED_PATH_PREFIXES)
+        cmd = [
+            "sh", "-c",
+            f"""realpath=$(/usr/bin/realpath {safe} 2>/dev/null || echo {safe})
 allowed=0
-for p in /home /tmp /var/log /opt/hermes /opt/data; do
+for p in {prefixes}; do
   case "$realpath" in
     $p|$p/*) allowed=1; break ;;
   esac
 done
 if [ "$allowed" = "0" ]; then
-  echo '__BLOCKED__'
-elif [ -f "$realpath" ] && [ -r "$realpath" ]; then
-  base64 "$realpath"
+  echo "__BLOCKED__"
+else
+  echo "$realpath"
+fi""",
+        ]
+        from kubernetes.stream import stream as k8s_stream
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    k8s_stream,
+                    self._stream_api.connect_get_namespaced_pod_exec,
+                    name=pod_name,
+                    namespace=self.namespace,
+                    command=cmd,
+                    container=self.EXEC_CONTAINER,
+                    stdin=False,
+                    stdout=True,
+                    stderr=False,
+                    tty=False,
+                    _preload_content=True,
+                ),
+                timeout=10,
+            )
+        except asyncio.TimeoutError:
+            raise ValueError(f"Timeout validating path {path} in pod {pod_name}")
+        except Exception as e:
+            raise ValueError(f"Failed to validate path {path} in pod {pod_name}: {e}")
+
+        resolved = result.strip()
+        if resolved == "__BLOCKED__":
+            raise ValueError(
+                f"Access to path {path} is not allowed (mode={mode})"
+            )
+        return resolved
+
+    async def read_file_from_pod(self, pod_name: str, path: str) -> tuple[bytes, str]:
+        """Read a file from a pod via exec. Returns (content_bytes, error_msg).
+        Uses base64 encoding to safely handle binary files.
+        Resolves symlinks inside the pod via realpath to prevent blocked-prefix bypass."""
+        import shlex
+        # Validate path via the shared whitelist helper.
+        try:
+            resolved = await self._validate_pod_path(pod_name, path, mode="read")
+        except ValueError as exc:
+            return b"", str(exc)
+
+        from kubernetes.stream import stream as k8s_stream
+        import base64
+        safe = shlex.quote(resolved)
+        cmd = ["sh", "-c", f"""if [ -f {safe} ] && [ -r {safe} ]; then
+  base64 {safe}
 else
   echo '__NOT_FOUND__'
 fi"""]
@@ -421,8 +496,6 @@ fi"""]
                 ),
                 timeout=30,
             )
-            if "__BLOCKED__" in result:
-                return b"", "Access to this path is not allowed"
             if "__NOT_FOUND__" in result:
                 return b"", "File not found or not readable"
             return base64.b64decode(result.strip()), ""
@@ -513,6 +586,9 @@ done""",
 
     async def write_file_to_pod(self, pod_name: str, path: str, content: bytes) -> None:
         """Write file content to a pod via exec + base64 decode. Creates parent dirs."""
+        # Validate path via the shared whitelist helper.
+        await self._validate_pod_path(pod_name, path, mode="write")
+
         from kubernetes.stream import stream as k8s_stream
         import base64
         import shlex
@@ -545,6 +621,9 @@ done""",
 
     async def delete_file_from_pod(self, pod_name: str, path: str) -> None:
         """Delete a file in a pod via exec."""
+        # Validate path via the shared whitelist helper.
+        await self._validate_pod_path(pod_name, path, mode="write")
+
         from kubernetes.stream import stream as k8s_stream
         import shlex
         safe = shlex.quote(path)

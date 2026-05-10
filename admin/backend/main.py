@@ -51,6 +51,7 @@ from kanban_routes import router as kanban_router
 from profile_routes import router as profile_router
 from skill_scanner import scan_skills
 from user_routes import router as user_router
+from hub_routes import router as hub_router
 from database import AsyncSessionLocal
 from db_models import AgentMetadata as AgentMetadataORM
 from db_models import AgentSkill as AgentSkillORM
@@ -99,6 +100,9 @@ app = FastAPI(title="Hermes Admin API", openapi_url=None, docs_url=None)
 # visible to every endpoint without restarting the process.
 app.state.admin_key = ADMIN_KEY
 
+# K8s client will be stored on app.state after initialization (line ~242)
+# so hub_routes and other modules can access it via request.app.state.k8s.
+
 # Include swarm router
 app.include_router(swarm_router)
 app.include_router(terminal_router)
@@ -106,6 +110,7 @@ app.include_router(file_browser_router)
 app.include_router(kanban_router)
 app.include_router(profile_router)
 app.include_router(user_router)
+app.include_router(hub_router)
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +243,7 @@ async def health():
 # Singleton helpers
 # ---------------------------------------------------------------------------
 k8s = K8sClient(namespace=K8S_NAMESPACE)
+app.state.k8s = k8s
 config_mgr = ConfigManager(data_root=HERMES_DATA_ROOT)
 manager = AgentManager(k8s=k8s, namespace=K8S_NAMESPACE, config_mgr=config_mgr)
 tpl = TemplateGenerator(data_root=HERMES_DATA_ROOT)

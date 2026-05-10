@@ -177,6 +177,38 @@ async def create_template(request: Request, body: TemplateCreate):
         return _template_to_dict(tmpl)
 
 
+@router.get("/profile-templates/skills-summary", dependencies=[auth])
+async def skills_summary(request: Request):
+    """Aggregate skill names from all templates' config_overrides.skills."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(ProfileTemplate.id, ProfileTemplate.config_overrides)
+        )
+        rows = result.all()
+
+    skills_map: dict[str, dict] = {}
+    for tmpl_id, config in rows:
+        if not isinstance(config, dict):
+            continue
+        skills_cfg = config.get("skills", {})
+        if not isinstance(skills_cfg, dict):
+            continue
+        for key in ("enabled", "disabled"):
+            for name in skills_cfg.get(key, []):
+                if not isinstance(name, str):
+                    continue
+                if name not in skills_map:
+                    skills_map[name] = {"name": name, "template_ids": []}
+                if tmpl_id not in skills_map[name]["template_ids"]:
+                    skills_map[name]["template_ids"].append(tmpl_id)
+
+    skills_list = sorted(
+        [{"name": v["name"], "template_ids": v["template_ids"], "template_count": len(v["template_ids"])} for v in skills_map.values()],
+        key=lambda s: (-s["template_count"], s["name"]),
+    )
+    return {"skills": skills_list}
+
+
 @router.get("/profile-templates/{template_id}", dependencies=[auth])
 async def get_template(
     request: Request,

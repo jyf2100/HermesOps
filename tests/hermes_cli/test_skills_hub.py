@@ -20,6 +20,7 @@ class _DummyLockFile:
 def hub_env(monkeypatch, tmp_path):
     """Set up isolated hub directory paths and return (monkeypatch, tmp_path)."""
     import tools.skills_hub as hub
+    import tools.skills_hub_local as hub_local
 
     hub_dir = tmp_path / "skills" / ".hub"
     monkeypatch.setattr(hub, "SKILLS_DIR", tmp_path / "skills")
@@ -29,6 +30,15 @@ def hub_env(monkeypatch, tmp_path):
     monkeypatch.setattr(hub, "AUDIT_LOG", hub_dir / "audit.log")
     monkeypatch.setattr(hub, "TAPS_FILE", hub_dir / "taps.json")
     monkeypatch.setattr(hub, "INDEX_CACHE_DIR", hub_dir / "index-cache")
+
+    # Also patch the local module where ensure_hub_dirs() reads its paths
+    monkeypatch.setattr(hub_local, "SKILLS_DIR", tmp_path / "skills")
+    monkeypatch.setattr(hub_local, "HUB_DIR", hub_dir)
+    monkeypatch.setattr(hub_local, "LOCK_FILE", hub_dir / "lock.json")
+    monkeypatch.setattr(hub_local, "QUARANTINE_DIR", hub_dir / "quarantine")
+    monkeypatch.setattr(hub_local, "AUDIT_LOG", hub_dir / "audit.log")
+    monkeypatch.setattr(hub_local, "TAPS_FILE", hub_dir / "taps.json")
+    monkeypatch.setattr(hub_local, "INDEX_CACHE_DIR", hub_dir / "index-cache")
 
     return hub_dir
 

@@ -16,7 +16,7 @@ echo "============================================"
 # Step 1: Create admin secret (generate a random 32-byte hex key)
 # --------------------------------------------------------------------------
 echo ""
-echo "[Step 1/6] Creating admin secret..."
+echo "[Step 1/8] Creating admin secret..."
 ADMIN_KEY=$(openssl rand -hex 32)
 
 if kubectl get secret hermes-admin-secret -n "$NAMESPACE" > /dev/null 2>&1; then
@@ -35,31 +35,43 @@ echo ""
 # --------------------------------------------------------------------------
 # Step 2: Apply RBAC (ServiceAccount, Role, RoleBinding)
 # --------------------------------------------------------------------------
-echo "[Step 2/6] Applying RBAC resources..."
+echo "[Step 2/8] Applying RBAC resources..."
 kubectl apply -f "$SCRIPT_DIR/rbac.yaml"
 echo "  RBAC applied."
 
 # --------------------------------------------------------------------------
-# Step 3: Apply Deployment
+# Step 3: Apply Hub Secret (if not exists)
 # --------------------------------------------------------------------------
 echo ""
-echo "[Step 3/6] Applying Deployment..."
+echo "[Step 3/8] Creating Hub GitHub token secret..."
+if ! kubectl get secret hub-github-token -n "$NAMESPACE" > /dev/null 2>&1; then
+    kubectl apply -f "$SCRIPT_DIR/hub-secret.yaml"
+    echo "  Hub secret applied (empty token — set via kubectl if needed)."
+else
+    echo "  Hub secret already exists, skipping."
+fi
+
+# --------------------------------------------------------------------------
+# Step 4: Apply Deployment
+# --------------------------------------------------------------------------
+echo ""
+echo "[Step 4/8] Applying Deployment..."
 kubectl apply -f "$SCRIPT_DIR/deployment.yaml"
 echo "  Deployment applied."
 
 # --------------------------------------------------------------------------
-# Step 4: Apply Service
+# Step 5: Apply Service
 # --------------------------------------------------------------------------
 echo ""
-echo "[Step 4/6] Applying Service..."
+echo "[Step 5/8] Applying Service..."
 kubectl apply -f "$SCRIPT_DIR/service.yaml"
 echo "  Service applied."
 
 # --------------------------------------------------------------------------
-# Step 5: Patch Ingress to add /admin paths
+# Step 6: Patch Ingress to add /admin paths
 # --------------------------------------------------------------------------
 echo ""
-echo "[Step 5/6] Patching Ingress to add /admin paths..."
+echo "[Step 6/8] Patching Ingress to add /admin paths..."
 
 # Check if the ingress exists
 if ! kubectl get ingress hermes-ingress -n "$NAMESPACE" > /dev/null 2>&1; then
@@ -107,10 +119,10 @@ spec:
 fi
 
 # --------------------------------------------------------------------------
-# Step 6: Wait for rollout
+# Step 7: Wait for rollout
 # --------------------------------------------------------------------------
 echo ""
-echo "[Step 6/6] Waiting for deployment rollout..."
+echo "[Step 7/8] Waiting for deployment rollout..."
 kubectl rollout status deployment/hermes-admin -n "$NAMESPACE" --timeout=120s
 
 echo ""

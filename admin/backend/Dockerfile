@@ -37,6 +37,24 @@ COPY backend/ ./
 # Copy swarm package (used by swarm_routes.py)
 COPY swarm/ /app/swarm/
 
+# Copy tools needed by Skills Hub (skills_hub_core, skills_guard)
+# Requires BuildKit extra build context:
+#   --build-context tools=../tools
+# The context path is relative to the build context (admin/), so ../tools
+# points to the repo-level tools directory.
+COPY --from=tools /__init__.py /app/tools/__init__.py
+COPY --from=tools /skills_hub_core.py /app/tools/skills_hub_core.py
+COPY --from=tools /skills_guard.py /app/tools/skills_guard.py
+
+# skills_hub_core imports hermes_constants lazily — provide a minimal stub
+# so that OptionalSkillSource gracefully degrades in the admin container.
+COPY backend/hermes_constants_stub.py /app/hermes_constants.py
+
+# Copy optional-skills from repo root for OptionalSkillSource
+# Requires BuildKit extra build context:
+#   --build-context optional-skills=../optional-skills
+COPY --from=optional-skills / /app/optional-skills/
+
 # Copy template files (admin/templates/ -> /app/templates/)
 COPY templates/ /app/templates/
 
