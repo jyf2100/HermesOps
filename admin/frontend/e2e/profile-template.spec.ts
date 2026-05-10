@@ -207,10 +207,14 @@ test.describe("Profile Template CRUD (Backend Integration)", () => {
   });
 
   test("editor closes on backdrop click", async ({ page }) => {
-    // NOTE: The fixed-position overlay's onClick handler is unreliable in
-    // headless Chromium — the click at (10,10) sometimes doesn't propagate
-    // through to the backdrop div. Works in headed mode. Skipping CI.
-    test.fixme(true, "Backdrop click unreliable in headless Chromium");
+    await goToProfiles(page);
+
+    await page.click('button:has-text("Create Profile")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Dispatch click directly on the backdrop overlay
+    await page.dispatchEvent('[data-testid="modal-backdrop"]', 'click');
+    await expect(page.locator('[role="dialog"]')).not.toBeVisible();
   });
 
   test("validates required profile name on create", async ({ page }) => {

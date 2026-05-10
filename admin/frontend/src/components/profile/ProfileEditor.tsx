@@ -164,6 +164,7 @@ export function ProfileEditor({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      data-testid="modal-backdrop"
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
