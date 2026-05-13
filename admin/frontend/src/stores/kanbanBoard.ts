@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { adminFetch } from "../lib/admin-api";
+import { showToast } from "../lib/toast";
 import type { KanbanTask, KanbanComment, AssigneeProfile } from "../components/kanban/kanban-types";
 
 interface KanbanBoardState {
@@ -7,7 +8,7 @@ interface KanbanBoardState {
   assignees: AssigneeProfile[];
   loading: boolean;
   error: string | null;
-  fetchBoard: (agentId: number) => Promise<void>;
+  fetchBoard: (agentId: number, silent?: boolean) => Promise<void>;
   fetchAssignees: (agentId: number) => Promise<void>;
   startPolling: (agentId: number) => void;
   stopPolling: () => void;
@@ -46,7 +47,7 @@ function _handleVisibility() {
     // Resume: fetch immediately and restart interval
     const store = useKanbanBoard.getState();
     store.fetchBoard(_pollingAgentId);
-    pollIntervalId = setInterval(() => store.fetchBoard(_pollingAgentId!), 15_000);
+    pollIntervalId = setInterval(() => store.fetchBoard(_pollingAgentId!, true), 15_000);
   }
 }
 
@@ -56,17 +57,25 @@ export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchBoard: async (agentId: number) => {
-    set({ loading: true, error: null });
+  fetchBoard: async (agentId: number, silent = false) => {
+    if (!silent) set({ loading: true, error: null });
     try {
       const board = await adminFetch<{ columns?: { tasks?: KanbanTask[] }[] }>(
-        `/agents/${agentId}/kanban/tasks`
+        `/agents/${agentId}/kanban/tasks?include_archived=true`
       );
       const columns = board?.columns ?? [];
       const tasks = columns.flatMap((col) => col?.tasks ?? []);
-      set({ tasks, loading: false });
+      if (silent) {
+        set({ tasks, error: null });
+      } else {
+        set({ tasks, loading: false, error: null });
+      }
     } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : String(e), loading: false });
+      if (silent) {
+        set({ error: e instanceof Error ? e.message : String(e) });
+      } else {
+        set({ error: e instanceof Error ? e.message : String(e), loading: false });
+      }
     }
   },
 
@@ -77,7 +86,7 @@ export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
       );
       set({ assignees: Array.isArray(data?.assignees) ? data.assignees : [] });
     } catch (e: unknown) {
-      console.warn("Failed to fetch assignees:", e);
+      showToast("Failed to fetch assignees", "error");
     }
   },
 
@@ -85,7 +94,7 @@ export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
     get().stopPolling();
     _pollingAgentId = agentId;
     get().fetchBoard(agentId);
-    pollIntervalId = setInterval(() => get().fetchBoard(agentId), 15_000);
+    pollIntervalId = setInterval(() => get().fetchBoard(agentId, true), 15_000);
     document.removeEventListener('visibilitychange', _handleVisibility);
     document.addEventListener('visibilitychange', _handleVisibility);
   },
@@ -111,7 +120,7 @@ export const useKanbanBoard = create<KanbanBoardState>((set, get) => ({
         method: "POST",
       });
     } catch (e) {
-      console.warn("Auto-dispatch failed:", e);
+      showToast("Auto-dispatch failed", "error");
     }
   },
 
