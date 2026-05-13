@@ -667,6 +667,25 @@ def update_task(task_id: str, payload: UpdateTaskBody, board: Optional[str] = Qu
         conn.close()
 
 
+@router.delete("/tasks/{task_id}")
+def delete_task(task_id: str, board: Optional[str] = Query(None)):
+    board = _resolve_board(board)
+    conn = _conn(board=board)
+    try:
+        task = kanban_db.get_task(conn, task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"task {task_id} not found")
+        ok = kanban_db.delete_task(conn, task_id)
+        if not ok:
+            raise HTTPException(
+                status_code=409,
+                detail=f"cannot delete task {task_id}: status is 'running', reclaim or wait for completion first",
+            )
+        return {"ok": True, "task_id": task_id}
+    finally:
+        conn.close()
+
+
 def _set_status_direct(
     conn: sqlite3.Connection, task_id: str, new_status: str,
 ) -> bool:
