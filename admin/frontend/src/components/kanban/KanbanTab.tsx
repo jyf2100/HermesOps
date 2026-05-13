@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useKanbanBoard } from "../../stores/kanbanBoard";
 import { adminFetch } from "../../lib/admin-api";
 import { showToast } from "../../lib/toast";
@@ -39,6 +39,17 @@ export function KanbanTab({ agentId }: KanbanTabProps) {
   const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [dispatching, setDispatching] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const archivedTasks = useMemo(
+    () => tasks.filter((t) => t.status === "archived"),
+    [tasks]
+  );
+
+  const handleCloseCreate = useCallback(() => setCreateOpen(false), []);
+  const handleTaskCreated = useCallback(() => fetchBoard(agentId), [agentId, fetchBoard]);
+  const handleCloseDrawer = useCallback(() => setSelectedTask(null), []);
+  const handleDrawerUpdate = useCallback(() => fetchBoard(agentId), [agentId, fetchBoard]);
 
   useEffect(() => {
     startPolling(agentId);
@@ -152,8 +163,50 @@ export function KanbanTab({ agentId }: KanbanTabProps) {
         ))}
       </div>
 
+      {/* Archived tasks collapsible */}
+      {archivedTasks.length > 0 && (
+        <div className="mt-4 border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs text-text-secondary hover:bg-surface-secondary transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <svg
+                className={`w-3 h-3 transition-transform ${showArchived ? "rotate-90" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              {t.kanbanArchived}
+              <span className="text-[10px] font-[family-name:var(--font-mono)] px-1.5 py-0.5 rounded bg-surface-tertiary">
+                {archivedTasks.length}
+              </span>
+            </span>
+          </button>
+          {showArchived && (
+            <div className="border-t border-border p-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {archivedTasks.map((task) => (
+                <button
+                  key={task.id}
+                  onClick={() => setSelectedTask(task)}
+                  className="text-left p-2 rounded bg-surface-secondary border border-border hover:border-accent-cyan/40 transition-colors"
+                >
+                  <p className="text-xs text-text-primary truncate">{task.title}</p>
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    {task.assignee ?? "default"} · {new Date(task.created_at * 1000).toLocaleDateString()}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Empty state */}
-      {tasks.length === 0 && (
+      {tasks.length === 0 && !archivedTasks.length && (
         <div className="text-center py-12 border border-dashed border-border rounded-lg">
           <p className="text-sm text-text-secondary mb-3">
             {t.kanbanNoTasksYet}
@@ -171,16 +224,16 @@ export function KanbanTab({ agentId }: KanbanTabProps) {
       <TaskDrawer
         task={selectedTask}
         agentId={agentId}
-        onClose={() => setSelectedTask(null)}
-        onUpdate={() => fetchBoard(agentId)}
+        onClose={handleCloseDrawer}
+        onUpdate={handleDrawerUpdate}
       />
 
       {/* Create task modal */}
       <CreateTaskModal
         agentId={agentId}
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => fetchBoard(agentId)}
+        onClose={handleCloseCreate}
+        onCreated={handleTaskCreated}
       />
     </div>
   );
