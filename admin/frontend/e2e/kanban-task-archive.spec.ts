@@ -12,10 +12,10 @@ const mockBoard = {
       tasks: [
         {
           id: "task1",
-          title: "Test task to delete",
+          title: "Test task to archive",
           status: "triage",
           priority: 2,
-          body: "delete me",
+          body: "archive me",
           assignee: null,
           created_at: 1700000000,
           parents: [],
@@ -34,7 +34,7 @@ const mockBoard = {
           title: "Running task",
           status: "running",
           priority: 2,
-          body: "can't delete",
+          body: "can't archive",
           assignee: null,
           created_at: 1700000000,
           parents: [],
@@ -52,10 +52,10 @@ const mockBoard = {
 const mockTaskDetail = {
   task: {
     id: "task1",
-    title: "Test task to delete",
+    title: "Test task to archive",
     status: "triage",
     priority: 2,
-    body: "delete me",
+    body: "archive me",
     assignee: null,
     created_at: 1700000000,
     completed_at: null,
@@ -96,14 +96,19 @@ const mockAgentDetail = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function setupKanbanDeletePage(
+async function setupKanbanArchivePage(
   page: import("@playwright/test").Page,
   overrides?: {
     taskDetail?: unknown;
-    deleteResponse?: unknown;
+    archiveResponse?: unknown;
   }
 ) {
-  const deleteResponse = overrides?.deleteResponse ?? { ok: true, task_id: "task1" };
+  const archiveResponse = overrides?.archiveResponse ?? {
+    id: "task1",
+    title: "Test task to archive",
+    status: "archived",
+    priority: 2,
+  };
 
   await loginAsAdminEn(page);
   await mockApi(page, {
@@ -118,7 +123,7 @@ async function setupKanbanDeletePage(
         status: "running",
       },
     },
-    "DELETE:/admin/api/agents/1/kanban/tasks/task1": deleteResponse,
+    "PATCH:/admin/api/agents/1/kanban/tasks/task1": archiveResponse,
     "GET:/admin/api/agents/1/kanban/assignees": { assignees: [] },
     "GET:/admin/api/agents/1": mockAgentDetail,
     "GET:/admin/api/cluster": {
@@ -156,88 +161,65 @@ async function setupKanbanDeletePage(
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("Kanban Task Deletion", () => {
-  test("delete button shows inline confirm bar and deletes task", async ({
+test.describe("Kanban Task Archive", () => {
+  test("archive button shows inline confirm bar and archives task", async ({
     page,
   }) => {
-    await setupKanbanDeletePage(page);
+    await setupKanbanArchivePage(page);
 
-    // Navigate to agent detail kanban tab
     await page.goto("/admin/agents/1?tab=kanban");
+    await expect(page.getByText("Test task to archive")).toBeVisible();
+    await page.getByText("Test task to archive").click();
 
-    // Wait for board to load
-    await expect(page.getByText("Test task to delete")).toBeVisible();
-
-    // Click the task to open drawer
-    await page.getByText("Test task to delete").click();
-
-    // Wait for drawer
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
 
-    // Click delete button (scoped to drawer to avoid matching page-level Delete button)
-    await drawer.getByRole("button", { name: "Delete" }).click();
+    // Click archive button in drawer (exact to avoid matching "Archived" status pill)
+    await drawer.getByRole("button", { name: "Archive", exact: true }).click();
 
-    // Confirm bar should appear
-    await expect(
-      drawer.getByText(/Permanently delete task/)
-    ).toBeVisible();
-    await expect(
-      drawer.getByRole("button", { name: "Confirm Delete" })
-    ).toBeVisible();
+    // Confirm bar appears
+    await expect(drawer.getByText(/Archive task/)).toBeVisible();
 
-    // Click confirm
-    await drawer.getByRole("button", { name: "Confirm Delete" }).click();
+    // Click confirm (last Archive button in the confirm bar)
+    await drawer.getByRole("button", { name: "Archive", exact: true }).last().click();
 
-    // Toast should appear
-    await expect(page.getByText("Task deleted")).toBeVisible();
+    // Toast
+    await expect(page.getByText("Task archived")).toBeVisible();
   });
 
-  test("delete button is disabled for running tasks", async ({ page }) => {
-    await setupKanbanDeletePage(page);
+  test("archive button is disabled for running tasks", async ({ page }) => {
+    await setupKanbanArchivePage(page);
 
     await page.goto("/admin/agents/1?tab=kanban");
     await expect(page.getByText("Running task")).toBeVisible();
 
-    // Click the running task to open drawer
     await page.getByText("Running task").click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
 
-    // Delete button should be disabled (scoped to drawer)
-    const deleteBtn = drawer.getByRole("button", { name: "Delete" });
-    await expect(deleteBtn).toBeDisabled();
+    const archiveBtn = drawer.getByRole("button", { name: "Archive", exact: true });
+    await expect(archiveBtn).toBeDisabled();
   });
 
   test("escape cancels the confirm bar", async ({ page }) => {
-    await setupKanbanDeletePage(page);
+    await setupKanbanArchivePage(page);
 
     await page.goto("/admin/agents/1?tab=kanban");
-    await expect(page.getByText("Test task to delete")).toBeVisible();
+    await expect(page.getByText("Test task to archive")).toBeVisible();
 
-    await page.getByText("Test task to delete").click();
+    await page.getByText("Test task to archive").click();
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
 
-    // Click delete (scoped to drawer)
-    await drawer.getByRole("button", { name: "Delete" }).click();
-    await expect(
-      drawer.getByText(/Permanently delete task/)
-    ).toBeVisible();
+    await drawer.getByRole("button", { name: "Archive", exact: true }).click();
+    await expect(drawer.getByText(/Archive task/)).toBeVisible();
 
-    // Wait for focus to land on the cancel button after requestAnimationFrame
     const cancelBtn = drawer.getByRole("button", { name: "Cancel" });
     await expect(cancelBtn).toBeFocused();
 
-    // Press Escape from the cancel button (which bubbles to the confirm bar onKeyDown)
     await cancelBtn.press("Escape");
 
-    // Confirm bar should disappear, delete button should be back
-    await expect(
-      drawer.getByText(/Permanently delete task/)
-    ).not.toBeVisible();
-    await expect(
-      drawer.getByRole("button", { name: "Delete" })
-    ).toBeVisible();
+    await expect(drawer.getByText(/Archive task/)).not.toBeVisible();
+    await expect(drawer.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
   });
 });
