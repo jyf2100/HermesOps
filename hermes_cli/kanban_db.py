@@ -2525,42 +2525,6 @@ def archive_task(conn: sqlite3.Connection, task_id: str) -> bool:
         return True
 
 
-def delete_task(conn: sqlite3.Connection, task_id: str) -> str:
-    """Hard-delete a task and all associated rows.
-
-    Returns:
-      "ok" — task deleted successfully
-      "not_found" — task does not exist
-      "running" — task is in 'running' status (must reclaim first)
-
-    NOTE: workspace directory on disk is intentionally NOT removed.
-    Operators who need to reclaim disk space should do so manually or
-    via a separate cleanup tool.
-    """
-    with write_txn(conn):
-        row = conn.execute(
-            "SELECT status, current_run_id FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        if row is None:
-            return "not_found"
-        if row["status"] == "running":
-            return "running"
-        if row["current_run_id"]:
-            _end_run(conn, task_id, outcome="reclaimed", status="reclaimed",
-                     summary="task deleted with run still recorded")
-        conn.execute("DELETE FROM task_comments WHERE task_id = ?", (task_id,))
-        conn.execute("DELETE FROM task_events WHERE task_id = ?", (task_id,))
-        conn.execute("DELETE FROM task_runs WHERE task_id = ?", (task_id,))
-        conn.execute("DELETE FROM kanban_notify_subs WHERE task_id = ?", (task_id,))
-        conn.execute("DELETE FROM task_links WHERE parent_id = ? OR child_id = ?",
-                     (task_id, task_id))
-        cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        if cur.rowcount != 1:
-            return "not_found"
-    return "ok"
-
-
 # ---------------------------------------------------------------------------
 # Workspace resolution
 # ---------------------------------------------------------------------------
