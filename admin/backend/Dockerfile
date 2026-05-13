@@ -12,6 +12,8 @@ RUN npm config set registry https://registry.npmmirror.com && \
 
 # Copy frontend source and build
 COPY frontend/ ./
+ARG BUILD_HASH=dev
+ENV BUILD_HASH=${BUILD_HASH}
 RUN npm run build -- --base /admin/
 
 # ============================================================================
@@ -34,9 +36,6 @@ RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && 
 # Copy backend source
 COPY backend/ ./
 
-# Copy swarm package (used by swarm_routes.py)
-COPY swarm/ /app/swarm/
-
 # Copy tools needed by Skills Hub (skills_hub_core, skills_guard)
 # Requires BuildKit extra build context:
 #   --build-context tools=../tools
@@ -58,9 +57,13 @@ COPY --from=optional-skills / /app/optional-skills/
 # Copy template files (admin/templates/ -> /app/templates/)
 COPY templates/ /app/templates/
 
-# Copy built frontend assets from stage 1
+# Copy built frontend assets from stage 1 (clean old assets first)
+RUN rm -rf /app/static/assets /app/static/index.html
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
 EXPOSE 48082
+
+RUN adduser --disabled-password --gecos "" --uid 10000 appuser
+USER appuser
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "48082", "--workers", "1"]
