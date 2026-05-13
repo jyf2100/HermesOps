@@ -141,6 +141,12 @@ async def kanban_update_task(request: Request, agent_id: int, task_id: str = Pat
     return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/plugins/kanban/tasks/{task_id}")
 
 
+@router.delete("/tasks/{task_id}", dependencies=[auth])
+async def kanban_delete_task(request: Request, agent_id: int, task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_-]{1,128}$")) -> StarletteResponse:
+    """Proxy: DELETE task."""
+    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/plugins/kanban/tasks/{task_id}")
+
+
 @router.post("/tasks/{task_id}/comments", dependencies=[auth])
 async def kanban_add_comment(request: Request, agent_id: int, task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_-]{1,128}$")) -> StarletteResponse:
     """Proxy: POST add comment to task."""
