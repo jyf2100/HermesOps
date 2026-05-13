@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useI18n } from "../../hooks/useI18n";
 import type { KanbanTask, KanbanTaskDetail, KanbanComment, KanbanStatus } from "./kanban-types";
-import { adminFetch } from "../../lib/admin-api";
+import { adminFetch, AdminApiError } from "../../lib/admin-api";
 import { showToast } from "../../lib/toast";
 import { useKanbanBoard } from "../../stores/kanbanBoard";
 
@@ -38,7 +38,12 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
   const [commentInput, setCommentInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [taskDetailData, setTaskDetailData] = useState<KanbanTaskDetail | null>(null);
+
+  const deleteBtnRef = useRef<HTMLButtonElement>(null);
+  const cancelConfirmRef = useRef<HTMLButtonElement>(null);
 
   const assignees = useKanbanBoard((s) => s.assignees);
   const fetchAssignees = useKanbanBoard((s) => s.fetchAssignees);
@@ -148,6 +153,47 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
 
   function handleQuickStatus(newStatus: KanbanStatus) {
     setStatus(newStatus);
+  }
+
+  function handleDeleteClick() {
+    setConfirmingDelete(true);
+    requestAnimationFrame(() => cancelConfirmRef.current?.focus());
+  }
+
+  function handleCancelConfirm() {
+    setConfirmingDelete(false);
+    requestAnimationFrame(() => deleteBtnRef.current?.focus());
+  }
+
+  function getDeleteErrorMessage(error: unknown): string {
+    if (error instanceof AdminApiError) {
+      switch (error.status) {
+        case 404: return t.kanbanDeleteNotFound;
+        case 409: return t.kanbanDeleteConflict;
+        case 502: case 504: return t.kanbanDeleteGatewayError;
+        default: return error.message || t.kanbanDeleteFailed;
+      }
+    }
+    return t.kanbanDeleteFailed;
+  }
+
+  async function handleConfirmDelete() {
+    if (!task) return;
+    setDeleting(true);
+    try {
+      await adminFetch<void>(
+        `/agents/${agentId}/kanban/tasks/${task.id}`,
+        { method: "DELETE" }
+      );
+      showToast(t.kanbanTaskDeleted);
+      onUpdate();
+      onClose();
+    } catch (e: unknown) {
+      showToast(getDeleteErrorMessage(e), "error");
+      setConfirmingDelete(false);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const latestSummary = taskDetailData?.latest_summary ?? null;
@@ -406,29 +452,78 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
             <div className="flex-1" />
           )}
 
-          <div className="border-t border-border px-4 py-3 flex justify-end gap-2">
-            {status === "blocked" && (
-              <button
-                onClick={handleUnblock}
-                disabled={saving}
-                className="px-4 py-2 text-sm rounded-md bg-accent-cyan text-white hover:bg-accent-cyan/90 disabled:opacity-50"
+          <div className="border-t border-border px-4 py-3">
+            {confirmingDelete ? (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="bg-accent-pink/5 border border-accent-pink/20 rounded-md px-3 py-2.5 flex items-center justify-between gap-3"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    handleCancelConfirm();
+                  }
+                }}
               >
-                {saving ? t.kanbanUnblocking : t.kanbanUnblockRetry}
-              </button>
+                <span className="text-xs text-accent-pink truncate">
+                  {t.kanbanDeleteConfirm.replace("{title}", title).replace("{id}", task?.id ?? "")}
+                </span>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    ref={cancelConfirmRef}
+                    onClick={handleCancelConfirm}
+                    className="px-3 py-1.5 text-xs rounded-md text-text-secondary hover:text-text-primary border border-border-subtle transition-colors focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={deleting}
+                    className="px-3 py-1.5 text-xs rounded-md bg-accent-pink text-white hover:bg-accent-pink/90 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                  >
+                    {deleting ? t.kanbanDeleting : t.kanbanDeleteConfirmBtn}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center">
+                <div>
+                  <button
+                    ref={deleteBtnRef}
+                    onClick={handleDeleteClick}
+                    disabled={task?.status === "running" || deleting}
+                    title={task?.status === "running" ? t.kanbanDeleteDisabledRunning : undefined}
+                    className="px-3 py-1.5 text-xs rounded-md border border-accent-pink/40 text-accent-pink hover:bg-accent-pink/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                  >
+                    {t.kanbanDelete}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  {status === "blocked" && (
+                    <button
+                      onClick={handleUnblock}
+                      disabled={saving}
+                      className="px-4 py-2 text-sm rounded-md bg-accent-cyan text-white hover:bg-accent-cyan/90 disabled:opacity-50"
+                    >
+                      {saving ? t.kanbanUnblocking : t.kanbanUnblockRetry}
+                    </button>
+                  )}
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2 text-sm rounded-md text-text-secondary hover:text-text-primary border border-border-subtle transition-colors"
+                  >
+                    {t.kanbanCancel}
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-4 py-2 text-sm rounded-md bg-accent-pink text-white hover:bg-accent-pink/90 disabled:opacity-50"
+                  >
+                    {saving ? t.kanbanSaving : t.kanbanSave}
+                  </button>
+                </div>
+              </div>
             )}
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded-md text-text-secondary hover:text-text-primary border border-border-subtle transition-colors"
-            >
-              {t.kanbanCancel}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 text-sm rounded-md bg-accent-pink text-white hover:bg-accent-pink/90 disabled:opacity-50"
-            >
-              {saving ? t.kanbanSaving : t.kanbanSave}
-            </button>
           </div>
         </div>
       </div>
