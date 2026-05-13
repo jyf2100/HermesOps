@@ -7,6 +7,7 @@ export interface Translations {
   navDashboard: string;
   navSettings: string;
   navWebui: string;
+  navCreateAgent: string;
   // Dashboard
   dashboard: string;
   dashboardSubtitle: string;
@@ -156,6 +157,11 @@ export interface Translations {
   memoryEnabled: string;
   sessionResetEnabled: string;
   extraEnv: string;
+  createTemplate: string;
+  createTemplateNone: string;
+  createTemplateNoSkills: string;
+  createTemplateSkills: string;
+  createTemplateSkillsCount: string;
   // Deploy
   deploy: string;
   deploying: string;
@@ -632,6 +638,16 @@ export interface Translations {
   kanbanUpdateFailed: string;
   kanbanCommentFailed: string;
   kanbanUnblockFailed: string;
+  kanbanDelete: string;
+  kanbanDeleting: string;
+  kanbanDeleteConfirm: string;
+  kanbanDeleteConfirmBtn: string;
+  kanbanTaskDeleted: string;
+  kanbanDeleteFailed: string;
+  kanbanDeleteNotFound: string;
+  kanbanDeleteConflict: string;
+  kanbanDeleteGatewayError: string;
+  kanbanDeleteDisabledRunning: string;
   kanbanLabels: string;
   kanbanLabelsPlaceholder: string;
   kanbanLabelsHint: string;
@@ -765,6 +781,21 @@ export interface Translations {
   templateViewConfig: string;
   templateBuiltinReadonly: string;
   templateSoulPlaceholder: string;
+  templateGenerateSoul: string;
+  templateGenerateSoulCancel: string;
+  templateGenerateSoulDialogTitle: string;
+  templateGenerateSoulFailed: string;
+  templateGenerateSoulGenerate: string;
+  templateGenerateSoulGenerating: string;
+  templateGenerateSoulNoAgents: string;
+  templateGenerateSoulOverwriteWarning: string;
+  templateGenerateSoulSelectAgent: string;
+  templateGenerateSoulSuccess: string;
+  templateSkillsInstall: string;
+  templateSkillsInstallDesc: string;
+  templateSkillsInstallEmpty: string;
+  templateSkillsInstallRemove: string;
+  templateSkillsInstallSearch: string;
   // Skills Hub Tab
   skills: string;
   skillsInstalled: string;
@@ -811,6 +842,10 @@ export interface Translations {
   skillsBrowseEmpty: string;
   skillsFromSource: string;
   skillsFilesCount: string;
+  skillsAutoInstall: string;
+  skillsAutoInstallProgress: string;
+  skillsAutoInstallComplete: string;
+  skillsAutoInstallPartial: string;
 }
 
 export const zh: Translations = {
@@ -823,6 +858,7 @@ export const zh: Translations = {
   navDashboard: "仪表盘",
   navSettings: "设置",
   navWebui: "Web 对话",
+  navCreateAgent: "创建 Agent",
 
   // Dashboard
   dashboard: "仪表盘",
@@ -984,6 +1020,11 @@ export const zh: Translations = {
   memoryEnabled: "启用记忆",
   sessionResetEnabled: "启用会话重置",
   extraEnv: "额外环境变量",
+  createTemplate: "选择模板",
+  createTemplateNone: "不使用模板",
+  createTemplateNoSkills: "此模板没有配置技能",
+  createTemplateSkills: "技能",
+  createTemplateSkillsCount: "{count} 个技能",
 
   // Deploy
   deploy: "部署",
@@ -1471,6 +1512,16 @@ export const zh: Translations = {
   kanbanUpdateFailed: "更新任务失败",
   kanbanCommentFailed: "添加评论失败",
   kanbanUnblockFailed: "解除阻塞失败",
+  kanbanDelete: "删除",
+  kanbanDeleting: "删除中...",
+  kanbanDeleteConfirm: "确定永久删除任务 \"{title}\" (ID: {id})？",
+  kanbanDeleteConfirmBtn: "确认删除",
+  kanbanTaskDeleted: "任务已删除",
+  kanbanDeleteFailed: "删除任务失败",
+  kanbanDeleteNotFound: "任务不存在，可能已被删除",
+  kanbanDeleteConflict: "无法删除正在执行的任务，请先回收(reclaim)",
+  kanbanDeleteGatewayError: "Agent 不可达，请稍后重试",
+  kanbanDeleteDisabledRunning: "任务执行中，无法删除",
   kanbanLabels: "标签",
   kanbanLabelsPlaceholder: "逗号分隔标签",
   kanbanLabelsHint: "多个标签用逗号分隔",
@@ -1604,6 +1655,21 @@ export const zh: Translations = {
   templateViewConfig: "查看完整配置",
   templateBuiltinReadonly: "内置：config_overrides 和 SOUL.md 对内置模板是只读的。",
   templateSoulPlaceholder: "自定义此模板的系统提示词...",
+  templateGenerateSoul: "生成 Soul",
+  templateGenerateSoulCancel: "取消",
+  templateGenerateSoulDialogTitle: "从 Agent 生成 Soul",
+  templateGenerateSoulFailed: "生成 Soul 失败",
+  templateGenerateSoulGenerate: "生成",
+  templateGenerateSoulGenerating: "生成中...",
+  templateGenerateSoulNoAgents: "没有可用的 Agent",
+  templateGenerateSoulOverwriteWarning: "此操作将覆盖当前的 soul.md 内容",
+  templateGenerateSoulSelectAgent: "选择 Agent",
+  templateGenerateSoulSuccess: "Soul 生成成功",
+  templateSkillsInstall: "技能自动安装",
+  templateSkillsInstallDesc: "创建 Agent 时自动安装技能",
+  templateSkillsInstallEmpty: "暂未配置技能",
+  templateSkillsInstallRemove: "移除",
+  templateSkillsInstallSearch: "搜索技能...",
   // Skills Hub Tab
   skills: "技能",
   skillsInstalled: "已安装",
@@ -1650,4 +1716,8 @@ export const zh: Translations = {
   skillsBrowseEmpty: "暂无可用的技能源",
   skillsFromSource: "来源: {source}",
   skillsFilesCount: "{count} 个文件",
+  skillsAutoInstall: "自动安装",
+  skillsAutoInstallProgress: "正在安装 {done}/{total}...",
+  skillsAutoInstallComplete: "安装完成",
+  skillsAutoInstallPartial: "部分完成（{failed} 个失败）",
 };
