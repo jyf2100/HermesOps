@@ -914,3 +914,119 @@ def test_latest_summaries_batch_omits_tasks_without_summary(kanban_home):
         assert out == {t1: "alpha", t3: "charlie"}
         # Empty input → empty dict, no SQL syntax error from "IN ()".
         assert kb.latest_summaries(conn, []) == {}
+
+
+# ---------------------------------------------------------------------------
+# delete_task
+# ---------------------------------------------------------------------------
+
+
+def test_delete_task_basic(kanban_home):
+    """delete_task removes the task and returns 'ok'."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="to-delete")
+        assert kb.get_task(conn, tid) is not None
+        result = kb.delete_task(conn, tid)
+        assert result == "ok"
+        assert kb.get_task(conn, tid) is None
+
+
+def test_delete_task_not_found(kanban_home):
+    """delete_task returns 'not_found' for non-existent task."""
+    with kb.connect() as conn:
+        result = kb.delete_task(conn, "nonexistent1234")
+        assert result == "not_found"
+
+
+def test_delete_task_running_rejected(kanban_home):
+    """delete_task returns 'running' for tasks with status='running'."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="active")
+        # Manually set to running
+        conn.execute("UPDATE tasks SET status = 'running' WHERE id = ?", (tid,))
+        result = kb.delete_task(conn, tid)
+        assert result == "running"
+        # Task still exists
+        assert kb.get_task(conn, tid) is not None
+
+
+def test_delete_task_cascades_comments(kanban_home):
+    """delete_task removes associated comments."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="with-comments")
+        kb.add_comment(conn, tid, author="alice", body="note")
+        kb.add_comment(conn, tid, author="bob", body="reply")
+        count = conn.execute(
+            "SELECT COUNT(*) FROM task_comments WHERE task_id = ?", (tid,)
+        ).fetchone()[0]
+        assert count == 2
+        result = kb.delete_task(conn, tid)
+        assert result == "ok"
+        count_after = conn.execute(
+            "SELECT COUNT(*) FROM task_comments WHERE task_id = ?", (tid,)
+        ).fetchone()[0]
+        assert count_after == 0
+
+
+def test_delete_task_cascades_events_and_runs(kanban_home):
+    """delete_task removes events and run records."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="with-history")
+        kb.complete_task(conn, tid, result="done", summary="all good")
+        # Should have events and runs
+        events = conn.execute(
+            "SELECT COUNT(*) FROM task_events WHERE task_id = ?", (tid,)
+        ).fetchone()[0]
+        assert events > 0
+        runs = conn.execute(
+            "SELECT COUNT(*) FROM task_runs WHERE task_id = ?", (tid,)
+        ).fetchone()[0]
+        assert runs > 0
+        result = kb.delete_task(conn, tid)
+        assert result == "ok"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM task_events WHERE task_id = ?", (tid,)
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM task_runs WHERE task_id = ?", (tid,)
+        ).fetchone()[0] == 0
+
+
+def test_delete_task_cascades_links(kanban_home):
+    """delete_task removes dependency links in both directions."""
+    with kb.connect() as conn:
+        parent = kb.create_task(conn, title="parent")
+        child = kb.create_task(conn, title="child", parents=[parent])
+        # Verify link exists
+        links = conn.execute("SELECT COUNT(*) FROM task_links").fetchone()[0]
+        assert links > 0
+        # Delete parent — child's link should be cleaned up
+        result = kb.delete_task(conn, parent)
+        assert result == "ok"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM task_links WHERE parent_id = ? OR child_id = ?",
+            (parent, parent),
+        ).fetchone()[0] == 0
+        # Child still exists
+        assert kb.get_task(conn, child) is not None
+
+
+def test_delete_task_after_archive(kanban_home):
+    """delete_task works on archived tasks."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="archived")
+        kb.archive_task(conn, tid)
+        assert kb.get_task(conn, tid).status == "archived"
+        result = kb.delete_task(conn, tid)
+        assert result == "ok"
+        assert kb.get_task(conn, tid) is None
+
+
+def test_delete_done_task(kanban_home):
+    """delete_task works on completed tasks."""
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="done-task")
+        kb.complete_task(conn, tid, result="finished", summary="all done")
+        result = kb.delete_task(conn, tid)
+        assert result == "ok"
+        assert kb.get_task(conn, tid) is None
