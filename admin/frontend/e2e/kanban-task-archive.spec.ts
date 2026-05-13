@@ -49,6 +49,86 @@ const mockBoard = {
   ],
 };
 
+const mockBoardWithArchived = {
+  columns: [
+    { name: "triage", tasks: [] },
+    { name: "todo", tasks: [] },
+    { name: "ready", tasks: [] },
+    { name: "running", tasks: [] },
+    { name: "done", tasks: [] },
+    { name: "blocked", tasks: [] },
+    {
+      name: "archived",
+      tasks: [
+        {
+          id: "archived1",
+          title: "Old research task",
+          status: "archived",
+          priority: 3,
+          body: "Finished research",
+          assignee: null,
+          created_at: 1700000000,
+          parents: [],
+          children: [],
+          skills: [],
+        },
+        {
+          id: "archived2",
+          title: "Legacy cleanup",
+          status: "archived",
+          priority: 1,
+          body: "Cleanup done",
+          assignee: "agent-a",
+          created_at: 1700001000,
+          parents: [],
+          children: [],
+          skills: [],
+        },
+      ],
+    },
+  ],
+};
+
+const mockBoardWithSingleArchived = {
+  columns: [
+    { name: "triage", tasks: [] },
+    { name: "todo", tasks: [] },
+    { name: "ready", tasks: [] },
+    { name: "running", tasks: [] },
+    { name: "done", tasks: [] },
+    { name: "blocked", tasks: [] },
+    {
+      name: "archived",
+      tasks: [
+        {
+          id: "archived1",
+          title: "Old research task",
+          status: "archived",
+          priority: 3,
+          body: "Finished research",
+          assignee: null,
+          created_at: 1700000000,
+          parents: [],
+          children: [],
+          skills: [],
+        },
+      ],
+    },
+  ],
+};
+
+const mockBoardEmpty = {
+  columns: [
+    { name: "triage", tasks: [] },
+    { name: "todo", tasks: [] },
+    { name: "ready", tasks: [] },
+    { name: "running", tasks: [] },
+    { name: "done", tasks: [] },
+    { name: "blocked", tasks: [] },
+    { name: "archived", tasks: [] },
+  ],
+};
+
 const mockTaskDetail = {
   task: {
     id: "task1",
@@ -66,6 +146,27 @@ const mockTaskDetail = {
     comments: [],
     latest_summary: null,
     result: null,
+    last_failure_error: null,
+  },
+};
+
+const mockArchivedTaskDetail = {
+  task: {
+    id: "archived1",
+    title: "Old research task",
+    status: "archived",
+    priority: 3,
+    body: "Finished research",
+    assignee: null,
+    created_at: 1700000000,
+    completed_at: 1700050000,
+    block_reason: null,
+    parents: [],
+    children: [],
+    skills: [],
+    comments: [],
+    latest_summary: "Research completed successfully",
+    result: "Final report delivered",
     last_failure_error: null,
   },
 };
@@ -92,9 +193,50 @@ const mockAgentDetail = {
   age_human: "1d",
 };
 
+// Shared agent list mock used across all tests
+const mockAgentsList = {
+  agents: [
+    {
+      id: 1,
+      name: "hermes-gateway-1",
+      status: "running",
+      url_path: "/agent1",
+      resources: {
+        cpu_cores: 0.1,
+        cpu_request_millicores: 250,
+        cpu_limit_millicores: 1000,
+        memory_bytes: 268435456,
+        memory_request_bytes: 268435456,
+        memory_limit_bytes: 536870912,
+      },
+      age: "1d",
+      restart_count: 0,
+      labels: {},
+      display_name: "Test Agent",
+    },
+  ],
+};
+
+const mockClusterInfo = {
+  nodes: [],
+  namespace: "hermes-agent",
+  total_agents: 1,
+  running_agents: 1,
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Build common API mocks shared across all kanban tests. */
+function baseRoutes() {
+  return {
+    "GET:/admin/api/agents/1/kanban/assignees": { assignees: [] },
+    "GET:/admin/api/agents/1": mockAgentDetail,
+    "GET:/admin/api/cluster": mockClusterInfo,
+    "GET:/admin/api/agents": mockAgentsList,
+  };
+}
 
 async function setupKanbanArchivePage(
   page: import("@playwright/test").Page,
@@ -112,6 +254,7 @@ async function setupKanbanArchivePage(
 
   await loginAsAdminEn(page);
   await mockApi(page, {
+    ...baseRoutes(),
     "GET:/admin/api/agents/1/kanban/tasks": mockBoard,
     "GET:/admin/api/agents/1/kanban/tasks/task1":
       overrides?.taskDetail ?? mockTaskDetail,
@@ -124,41 +267,29 @@ async function setupKanbanArchivePage(
       },
     },
     "PATCH:/admin/api/agents/1/kanban/tasks/task1": archiveResponse,
-    "GET:/admin/api/agents/1/kanban/assignees": { assignees: [] },
-    "GET:/admin/api/agents/1": mockAgentDetail,
-    "GET:/admin/api/cluster": {
-      nodes: [],
-      namespace: "hermes-agent",
-      total_agents: 1,
-      running_agents: 1,
-    },
-    "GET:/admin/api/agents": {
-      agents: [
-        {
-          id: 1,
-          name: "hermes-gateway-1",
-          status: "running",
-          url_path: "/agent1",
-          resources: {
-            cpu_cores: 0.1,
-            cpu_request_millicores: 250,
-            cpu_limit_millicores: 1000,
-            memory_bytes: 268435456,
-            memory_request_bytes: 268435456,
-            memory_limit_bytes: 536870912,
-          },
-          age: "1d",
-          restart_count: 0,
-          labels: {},
-          display_name: "Test Agent",
-        },
-      ],
-    },
+  });
+}
+
+/**
+ * Setup helper for archived-section tests.
+ * Allows callers to pick which board fixture to use and optionally add
+ * extra route overrides.
+ */
+async function setupArchivedSectionPage(
+  page: import("@playwright/test").Page,
+  board: typeof mockBoardWithArchived,
+  extraRoutes?: Record<string, unknown>
+) {
+  await loginAsAdminEn(page);
+  await mockApi(page, {
+    ...baseRoutes(),
+    "GET:/admin/api/agents/1/kanban/tasks": board,
+    ...extraRoutes,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests — TaskDrawer archive flow
 // ---------------------------------------------------------------------------
 
 test.describe("Kanban Task Archive", () => {
@@ -221,5 +352,78 @@ test.describe("Kanban Task Archive", () => {
 
     await expect(drawer.getByText(/Archive task/)).not.toBeVisible();
     await expect(drawer.getByRole("button", { name: "Archive", exact: true })).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — Archived tasks collapsible section
+// ---------------------------------------------------------------------------
+
+test.describe("Kanban Archived Tasks Section", () => {
+  test("archived section appears when there are archived tasks", async ({
+    page,
+  }) => {
+    await setupArchivedSectionPage(page, mockBoardWithArchived);
+
+    await page.goto("/admin/agents/1?tab=kanban");
+
+    // The "Archived" collapsible header should be visible
+    const archivedHeader = page.getByRole("button", { name: /Archived/ });
+    await expect(archivedHeader).toBeVisible();
+
+    // Count badge should show "2"
+    await expect(archivedHeader.getByText("2")).toBeVisible();
+  });
+
+  test("archived section is hidden when no archived tasks exist", async ({
+    page,
+  }) => {
+    await setupArchivedSectionPage(page, mockBoardEmpty);
+
+    await page.goto("/admin/agents/1?tab=kanban");
+
+    // The "Archived" header should NOT be visible
+    const archivedHeader = page.getByRole("button", { name: /Archived/ });
+    await expect(archivedHeader).not.toBeVisible();
+  });
+
+  test("expanding archived section shows task cards", async ({ page }) => {
+    await setupArchivedSectionPage(page, mockBoardWithArchived);
+
+    await page.goto("/admin/agents/1?tab=kanban");
+
+    // Click the archived header to expand
+    const archivedHeader = page.getByRole("button", { name: /Archived/ });
+    await archivedHeader.click();
+
+    // Both archived task titles should now be visible
+    await expect(page.getByText("Old research task")).toBeVisible();
+    await expect(page.getByText("Legacy cleanup")).toBeVisible();
+  });
+
+  test("clicking archived task opens drawer with details", async ({
+    page,
+  }) => {
+    await setupArchivedSectionPage(page, mockBoardWithSingleArchived, {
+      "GET:/admin/api/agents/1/kanban/tasks/archived1": mockArchivedTaskDetail,
+    });
+
+    await page.goto("/admin/agents/1?tab=kanban");
+
+    // Expand the archived section
+    const archivedHeader = page.getByRole("button", { name: /Archived/ });
+    await archivedHeader.click();
+
+    // Click the archived task card
+    await page.getByText("Old research task").click();
+
+    // TaskDrawer should open — the title is rendered in an <input>
+    const drawer = page.getByRole("dialog");
+    await expect(drawer).toBeVisible();
+    // The dialog aria-label includes the task title
+    await expect(drawer).toHaveAttribute("aria-label", /Old research task/);
+    // The title input should hold the task title
+    const titleInput = drawer.locator("input[type='text']").first();
+    await expect(titleInput).toHaveValue("Old research task");
   });
 });
