@@ -2525,11 +2525,17 @@ def archive_task(conn: sqlite3.Connection, task_id: str) -> bool:
         return True
 
 
-def delete_task(conn: sqlite3.Connection, task_id: str) -> bool:
+def delete_task(conn: sqlite3.Connection, task_id: str) -> str:
     """Hard-delete a task and all associated rows.
 
-    Returns False when the task is in 'running' status (must reclaim first).
-    Returns True on success.  Raises on unexpected errors.
+    Returns:
+      "ok" — task deleted successfully
+      "not_found" — task does not exist
+      "running" — task is in 'running' status (must reclaim first)
+
+    NOTE: workspace directory on disk is intentionally NOT removed.
+    Operators who need to reclaim disk space should do so manually or
+    via a separate cleanup tool.
     """
     with write_txn(conn):
         row = conn.execute(
@@ -2537,9 +2543,9 @@ def delete_task(conn: sqlite3.Connection, task_id: str) -> bool:
             (task_id,),
         ).fetchone()
         if row is None:
-            return False
+            return "not_found"
         if row["status"] == "running":
-            return False
+            return "running"
         if row["current_run_id"]:
             _end_run(conn, task_id, outcome="reclaimed", status="reclaimed",
                      summary="task deleted with run still recorded")
@@ -2551,8 +2557,8 @@ def delete_task(conn: sqlite3.Connection, task_id: str) -> bool:
                      (task_id, task_id))
         cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         if cur.rowcount != 1:
-            return False
-    return True
+            return "not_found"
+    return "ok"
 
 
 # ---------------------------------------------------------------------------

@@ -672,11 +672,10 @@ def delete_task(task_id: str, board: Optional[str] = Query(None)):
     board = _resolve_board(board)
     conn = _conn(board=board)
     try:
-        task = kanban_db.get_task(conn, task_id)
-        if task is None:
+        result = kanban_db.delete_task(conn, task_id)
+        if result == "not_found":
             raise HTTPException(status_code=404, detail=f"task {task_id} not found")
-        ok = kanban_db.delete_task(conn, task_id)
-        if not ok:
+        if result == "running":
             raise HTTPException(
                 status_code=409,
                 detail=f"cannot delete task {task_id}: status is 'running', reclaim or wait for completion first",
