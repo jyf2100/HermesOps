@@ -119,8 +119,12 @@ async def kanban_board(request: Request, agent_id: int) -> StarletteResponse:
 
 @router.get("/tasks", dependencies=[auth])
 async def kanban_list_tasks(request: Request, agent_id: int) -> StarletteResponse:
-    """Proxy: GET all tasks (flattened from board columns)."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/board")
+    """Proxy: GET all tasks (flattened from board columns, includes archived)."""
+    return await _proxy(
+        request,
+        get_effective_agent_id(request, agent_id),
+        "/api/plugins/kanban/board?include_archived=true",
+    )
 
 
 @router.get("/tasks/{task_id}", dependencies=[auth])
