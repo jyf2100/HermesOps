@@ -2525,6 +2525,36 @@ def archive_task(conn: sqlite3.Connection, task_id: str) -> bool:
         return True
 
 
+def delete_task(conn: sqlite3.Connection, task_id: str) -> bool:
+    """Hard-delete a task and all associated rows.
+
+    Returns False when the task is in 'running' status (must reclaim first).
+    Returns True on success.  Raises on unexpected errors.
+    """
+    with write_txn(conn):
+        row = conn.execute(
+            "SELECT status, current_run_id FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        if row["status"] == "running":
+            return False
+        if row["current_run_id"]:
+            _end_run(conn, task_id, outcome="reclaimed", status="reclaimed",
+                     summary="task deleted with run still recorded")
+        conn.execute("DELETE FROM task_comments WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM task_events WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM task_runs WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM kanban_notify_subs WHERE task_id = ?", (task_id,))
+        conn.execute("DELETE FROM task_links WHERE parent_id = ? OR child_id = ?",
+                     (task_id, task_id))
+        cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        if cur.rowcount != 1:
+            return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Workspace resolution
 # ---------------------------------------------------------------------------
