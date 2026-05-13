@@ -38,11 +38,11 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
   const [commentInput, setCommentInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [taskDetailData, setTaskDetailData] = useState<KanbanTaskDetail | null>(null);
 
-  const deleteBtnRef = useRef<HTMLButtonElement>(null);
+  const archiveBtnRef = useRef<HTMLButtonElement>(null);
   const cancelConfirmRef = useRef<HTMLButtonElement>(null);
 
   const assignees = useKanbanBoard((s) => s.assignees);
@@ -155,44 +155,47 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
     setStatus(newStatus);
   }
 
-  function handleDeleteClick() {
-    setConfirmingDelete(true);
+  function handleArchiveClick() {
+    setConfirmingArchive(true);
     requestAnimationFrame(() => cancelConfirmRef.current?.focus());
   }
 
   function handleCancelConfirm() {
-    setConfirmingDelete(false);
-    requestAnimationFrame(() => deleteBtnRef.current?.focus());
+    setConfirmingArchive(false);
+    requestAnimationFrame(() => archiveBtnRef.current?.focus());
   }
 
-  function getDeleteErrorMessage(error: unknown): string {
+  function getArchiveErrorMessage(error: unknown): string {
     if (error instanceof AdminApiError) {
       switch (error.status) {
-        case 404: return t.kanbanDeleteNotFound;
-        case 409: return t.kanbanDeleteConflict;
-        case 502: case 504: return t.kanbanDeleteGatewayError;
-        default: return error.message || t.kanbanDeleteFailed;
+        case 404: return t.kanbanArchiveFailed;
+        case 409: return t.kanbanArchiveFailed;
+        case 502: case 504: return t.kanbanArchiveFailed;
+        default: return error.message || t.kanbanArchiveFailed;
       }
     }
-    return t.kanbanDeleteFailed;
+    return t.kanbanArchiveFailed;
   }
 
-  async function handleConfirmDelete() {
+  async function handleConfirmArchive() {
     if (!task) return;
-    setDeleting(true);
+    setArchiving(true);
     try {
-      await adminFetch<void>(
+      await adminFetch<KanbanTask>(
         `/agents/${agentId}/kanban/tasks/${task.id}`,
-        { method: "DELETE" }
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: "archived" }),
+        }
       );
-      showToast(t.kanbanTaskDeleted);
+      showToast(t.kanbanTaskArchived);
       onUpdate();
       onClose();
     } catch (e: unknown) {
-      showToast(getDeleteErrorMessage(e), "error");
-      setConfirmingDelete(false);
+      showToast(getArchiveErrorMessage(e), "error");
+      setConfirmingArchive(false);
     } finally {
-      setDeleting(false);
+      setArchiving(false);
     }
   }
 
@@ -453,11 +456,11 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
           )}
 
           <div className="border-t border-border px-4 py-3">
-            {confirmingDelete ? (
+            {confirmingArchive ? (
               <div
                 role="alert"
                 aria-live="assertive"
-                className="bg-accent-pink/5 border border-accent-pink/20 rounded-md px-3 py-2.5 flex items-center justify-between gap-3"
+                className="bg-accent-cyan/5 border border-accent-cyan/20 rounded-md px-3 py-2.5 flex items-center justify-between gap-3"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
@@ -465,8 +468,8 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
                   }
                 }}
               >
-                <span className="text-xs text-accent-pink truncate">
-                  {t.kanbanDeleteConfirm.replace("{title}", title).replace("{id}", task?.id ?? "")}
+                <span className="text-xs text-accent-cyan truncate">
+                  {t.kanbanArchiveConfirm.replace("{title}", title)}
                 </span>
                 <div className="flex gap-2 shrink-0">
                   <button
@@ -477,11 +480,11 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
                     {t.cancel}
                   </button>
                   <button
-                    onClick={handleConfirmDelete}
-                    disabled={deleting}
-                    className="px-3 py-1.5 text-xs rounded-md bg-accent-pink text-white hover:bg-accent-pink/90 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                    onClick={handleConfirmArchive}
+                    disabled={archiving}
+                    className="px-3 py-1.5 text-xs rounded-md bg-accent-cyan text-white hover:bg-accent-cyan/90 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
                   >
-                    {deleting ? t.kanbanDeleting : t.kanbanDeleteConfirmBtn}
+                    {archiving ? t.kanbanArchiving : t.kanbanArchive}
                   </button>
                 </div>
               </div>
@@ -489,13 +492,12 @@ export function TaskDrawer({ task, agentId, onClose, onUpdate }: TaskDrawerProps
               <div className="flex justify-between items-center">
                 <div>
                   <button
-                    ref={deleteBtnRef}
-                    onClick={handleDeleteClick}
-                    disabled={task?.status === "running" || deleting}
-                    title={task?.status === "running" ? t.kanbanDeleteDisabledRunning : undefined}
-                    className="px-3 py-1.5 text-xs rounded-md border border-accent-pink/40 text-accent-pink hover:bg-accent-pink/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                    ref={archiveBtnRef}
+                    onClick={handleArchiveClick}
+                    disabled={task?.status === "running" || archiving}
+                    className="px-3 py-1.5 text-xs rounded-md border border-accent-cyan/40 text-accent-cyan hover:bg-accent-cyan/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
                   >
-                    {t.kanbanDelete}
+                    {t.kanbanArchive}
                   </button>
                 </div>
                 <div className="flex gap-2">

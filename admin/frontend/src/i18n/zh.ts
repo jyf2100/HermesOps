@@ -638,16 +638,11 @@ export interface Translations {
   kanbanUpdateFailed: string;
   kanbanCommentFailed: string;
   kanbanUnblockFailed: string;
-  kanbanDelete: string;
-  kanbanDeleting: string;
-  kanbanDeleteConfirm: string;
-  kanbanDeleteConfirmBtn: string;
-  kanbanTaskDeleted: string;
-  kanbanDeleteFailed: string;
-  kanbanDeleteNotFound: string;
-  kanbanDeleteConflict: string;
-  kanbanDeleteGatewayError: string;
-  kanbanDeleteDisabledRunning: string;
+  kanbanArchive: string;
+  kanbanArchiving: string;
+  kanbanArchiveConfirm: string;
+  kanbanTaskArchived: string;
+  kanbanArchiveFailed: string;
   kanbanLabels: string;
   kanbanLabelsPlaceholder: string;
   kanbanLabelsHint: string;
@@ -1470,6 +1465,11 @@ export const zh: Translations = {
   kanbanDone: "已完成",
   kanbanBlocked: "已阻塞",
   kanbanArchived: "已归档",
+  kanbanArchive: "归档",
+  kanbanArchiving: "归档中...",
+  kanbanArchiveConfirm: "确定归档任务 \"{title}\"？归档后将从看板隐藏，但历史记录保留。",
+  kanbanTaskArchived: "任务已归档",
+  kanbanArchiveFailed: "归档任务失败",
   kanbanDispatch: "派发",
   kanbanDispatching: "派发中...",
   kanbanNoTasksToDispatch: "无可派发任务",
@@ -1512,16 +1512,6 @@ export const zh: Translations = {
   kanbanUpdateFailed: "更新任务失败",
   kanbanCommentFailed: "添加评论失败",
   kanbanUnblockFailed: "解除阻塞失败",
-  kanbanDelete: "删除",
-  kanbanDeleting: "删除中...",
-  kanbanDeleteConfirm: "确定永久删除任务 \"{title}\" (ID: {id})？",
-  kanbanDeleteConfirmBtn: "确认删除",
-  kanbanTaskDeleted: "任务已删除",
-  kanbanDeleteFailed: "删除任务失败",
-  kanbanDeleteNotFound: "任务不存在，可能已被删除",
-  kanbanDeleteConflict: "无法删除正在执行的任务，请先回收(reclaim)",
-  kanbanDeleteGatewayError: "Agent 不可达，请稍后重试",
-  kanbanDeleteDisabledRunning: "任务执行中，无法删除",
   kanbanLabels: "标签",
   kanbanLabelsPlaceholder: "逗号分隔标签",
   kanbanLabelsHint: "多个标签用逗号分隔",
