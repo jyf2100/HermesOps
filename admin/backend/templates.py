@@ -289,6 +289,7 @@ class TemplateGenerator:
                 "ports": [
                     {"name": "api", "port": 8642, "targetPort": 8642},
                     {"name": "dashboard", "port": 9119, "targetPort": 9119},
+                    {"name": "ops", "port": 6060, "targetPort": 6060},
                 ],
                 "selector": {"app": name},
             },
