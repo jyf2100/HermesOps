@@ -30,7 +30,7 @@ from config_manager import ConfigManager
 from constants import SECRET_PATTERNS, PROVIDER_URL_MAP, format_age, determine_api_mode, resolve_agent_provider, strip_v1_suffix, is_bearer_auth_endpoint
 from templates import deployment_name
 from database import AsyncSessionLocal
-from db_models import AgentMetadata, AgentSkill, ReportIdRecord
+from db_models import AgentMetadata, AgentProfile, AgentSkill, ReportIdRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class AgentManager:
             return f"{self._external_url_prefix.rstrip('/')}{path}"
         # Try to derive from ingress
         try:
-            ingress = await self.k8s.get_ingress("hermes-ingress")
+            ingress = await self.k8s.get_ingress("hermes-webui-ingress") or await self.k8s.get_ingress("hermes-admin-ingress")
             if ingress and ingress.spec.rules:
                 host = ingress.spec.rules[0].host
                 if host:
@@ -260,10 +260,30 @@ class AgentManager:
         secret_name = f"{name}-secret"
         data_dir = f"/data/hermes/agent{agent_num}"
 
-        # Pre-flight: check existing
+        # Pre-flight: check existing deployment (running agent)
         existing = await self.k8s.get_deployment(name)
         if existing is not None:
             raise HTTPException(409, f"Deployment {name} already exists")
+
+        # Pre-flight cleanup: remove orphaned resources from previous failed attempts
+        logger.info("Pre-flight cleanup for agent %d: checking orphaned resources", agent_num)
+        for cleanup_fn, cleanup_label in [
+            (lambda: self.k8s.delete_secret(secret_name), "secret"),
+            (lambda: self.k8s.delete_deployment(name), "deployment"),
+            (lambda: self.k8s.delete_service(name), "service"),
+        ]:
+            try:
+                await cleanup_fn()
+                logger.info("Pre-flight cleanup: removed orphaned %s for agent %d", cleanup_label, agent_num)
+            except Exception:
+                pass  # Resource didn't exist, that's fine
+        try:
+            await self.k8s.remove_ingress_path(f"/agent{agent_num}")
+        except Exception:
+            pass
+        if os.path.isdir(data_dir):
+            shutil.rmtree(data_dir, ignore_errors=True)
+            logger.info("Pre-flight cleanup: removed data dir %s", data_dir)
 
         api_key = secrets.token_urlsafe(32)
 
@@ -356,6 +376,9 @@ class AgentManager:
             await self.k8s.add_ingress_path(
                 path=f"/agent{agent_num}", service_name=name, service_port=8642,
             )
+            await self.k8s.add_ingress_path(
+                path=f"/agent{agent_num}/ops", service_name=name, service_port=6060,
+            )
             step.status = "done"
         except Exception as e:
             step.status = "failed"
@@ -410,7 +433,32 @@ class AgentManager:
         except Exception as e:
             logger.warning("Failed to write AgentMetadata for agent %s: %s", agent_num, e)
 
-        return CreateAgentResponse(agent_number=agent_num, name=name, created=created, steps=steps)
+        # Post-hook: auto-install template skills
+        install_tasks: list[str] = []
+        if req.template_id and created:
+            try:
+                async with AsyncSessionLocal() as tpl_session:
+                    from db_models import ProfileTemplate
+                    from sqlalchemy import select
+                    tpl_row = await tpl_session.get(ProfileTemplate, req.template_id)
+                    if tpl_row and tpl_row.config_overrides:
+                        install_list = (tpl_row.config_overrides.get("skills") or {}).get("install") or []
+                        if install_list:
+                            from hub_installer import install_skills_for_template
+                            install_tasks = await install_skills_for_template(
+                                agent_num, install_list, self.k8s,
+                            )
+                            logger.info(
+                                "Auto-install triggered %d tasks for agent %d (template %d)",
+                                len(install_tasks), agent_num, req.template_id,
+                            )
+            except Exception as exc:
+                logger.warning("Template auto-install hook failed for agent %d: %s", agent_num, exc)
+
+        return CreateAgentResponse(
+            agent_number=agent_num, name=name, created=created,
+            steps=steps, install_tasks=install_tasks,
+        )
 
     # --- Delete Agent ---
     async def delete_agent(self, agent_id: int, backup: bool = True) -> MessageResponse:
@@ -450,6 +498,9 @@ class AgentManager:
                 from sqlalchemy import delete as sa_delete
                 await db_session.execute(
                     sa_delete(AgentSkill).where(AgentSkill.agent_number == agent_id)
+                )
+                await db_session.execute(
+                    sa_delete(AgentProfile).where(AgentProfile.agent_number == agent_id)
                 )
                 await db_session.execute(
                     sa_delete(ReportIdRecord).where(ReportIdRecord.agent_number == agent_id)
@@ -605,7 +656,7 @@ class AgentManager:
         # Read the agent's configured model for a realistic test
         model = "test"
         try:
-            cfg = self._config_mgr.read_config(agent_id)
+            cfg = self.config_mgr.read_config(agent_id)
             parsed = yaml.safe_load(cfg.content)
             if isinstance(parsed, dict):
                 model = parsed.get("model", {}).get("default", "test") or "test"
@@ -691,6 +742,7 @@ class AgentManager:
             try:
                 log_stream = self.k8s.core_api.read_namespaced_pod_log(
                     name=pod_name, namespace=self.namespace,
+                    container="gateway",
                     tail_lines=tail, follow=follow, _preload_content=False,
                 )
                 for line in log_stream:
