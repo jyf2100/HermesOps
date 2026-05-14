@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Outlet, Navigate, useLocation, Link, NavLink } from "react-router-dom";
 import { useI18n } from "../hooks/useI18n";
 import { getAuthMode, adminApi } from "../lib/admin-api";
@@ -161,12 +161,50 @@ function IconTemplate({ className }: { className?: string }) {
   );
 }
 
+function IconTerminal({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </svg>
+  );
+}
+
+function IconPlus({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 4v16m8-8H4" />
+    </svg>
+  );
+}
+
 /* ── Navigation items ── */
 
 interface NavItem {
   to: string;
   label: string;
   icon: typeof IconDashboard;
+  href?: string; // external link
 }
 
 /* ── Component ── */
@@ -185,25 +223,48 @@ export function AdminLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
+  // Escape key closes mobile drawer
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [drawerOpen]);
+
+  // Lock body scroll when mobile drawer is open
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [drawerOpen]);
+
   /* Auth guard */
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+
+  const storedAgentId = parseInt(localStorage.getItem("admin_user_agent_id") || "0", 10)
+  const opsPanelUrl = storedAgentId > 0 ? `${window.location.origin}/agent${storedAgentId}/ops/` : "#"
 
   const navItems: NavItem[] = isUser
     ? [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
         { to: "/files", label: t.fileBrowser, icon: IconFolder },
         { to: "/chat", label: t.startChat, icon: IconChat },
+        ...(storedAgentId > 0 ? [{ to: "#", label: t.navAgentPanel, icon: IconTerminal, href: opsPanelUrl }] : []),
       ]
     : [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
+        { to: "/create", label: t.navCreateAgent, icon: IconPlus },
         { to: "/templates", label: t.templateNav, icon: IconTemplate },
         { to: "/settings", label: t.navSettings, icon: IconSettings },
       ];
 
-  const isActive = (path: string) =>
-    path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+  const isActive = (path: string) => {
+    if (path === "/") return location.pathname === "/" || location.pathname.startsWith("/agents/");
+    return location.pathname.startsWith(path);
+  };
 
   async function handleLogout() {
     if (isUser) {
@@ -233,8 +294,8 @@ export function AdminLayout() {
     return (
       <div className="flex flex-col h-full">
         {/* Brand */}
-        <div className="px-5 py-5 shrink-0">
-          <h1 className="glow-pink-text font-[family-name:var(--font-display)] text-lg font-bold tracking-[0.15em] text-accent-pink">
+        <div className="px-5 py-4 shrink-0 border-b border-border-subtle">
+          <h1 className="font-[family-name:var(--font-display)] text-base font-bold tracking-[0.12em] text-accent-pink/80">
             NEWHERMES
           </h1>
           {isUser && userDisplayName && (
@@ -247,17 +308,37 @@ export function AdminLayout() {
         {/* Navigation */}
         <nav className="flex-1 px-2 mt-2 space-y-1" aria-label="Main navigation">
           {navItems.map((item) => {
-            const active = isActive(item.to);
+            const active = !item.href && isActive(item.to);
             const Icon = item.icon;
+
+            if (item.href && item.href !== "#") {
+              return (
+                <a
+                  key={item.to}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface/50 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]"
+                >
+                  <Icon className="w-[18px] h-[18px] shrink-0" />
+                  <span>{item.label}</span>
+                  <svg viewBox="0 0 20 20" className="w-3 h-3 ml-auto opacity-40" fill="currentColor" aria-hidden="true">
+                    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                    <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+                  </svg>
+                </a>
+              );
+            }
+
             return (
               <Link
                 key={item.to}
                 to={item.to}
                 onClick={onNavigate}
                 className={[
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]",
                   active
-                    ? "text-text-primary font-medium"
+                    ? "text-text-primary font-medium bg-accent-pink/10"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
                 ].join(" ")}
                 aria-current={active ? "page" : undefined}
@@ -268,190 +349,17 @@ export function AdminLayout() {
                     aria-hidden="true"
                   />
                 )}
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-[18px] h-[18px] shrink-0" />
                 <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* Web UI link — admin only */}
-        {!isUser && (
-          <div className="px-2 mt-4">
-            <a
-              href={window.location.origin}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface/50 transition-colors duration-150"
-            >
-              <IconChat className="w-4 h-4 shrink-0" />
-              <span>{t.navWebui}</span>
-              <svg viewBox="0 0 20 20" className="w-3 h-3 ml-auto opacity-40" fill="currentColor" aria-hidden="true">
-                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
-                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
-              </svg>
-            </a>
-          </div>
-        )}
-
-        {/* Swarm section — admin only */}
-        {!isUser && (
-          <div className="px-2 mt-4">
-            <div className="px-3 py-2 text-xs uppercase text-text-secondary tracking-wider">
-              {t.navSwarm}
-            </div>
-            <NavLink
-              to="/swarm"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
-                  isActive
-                    ? "text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-4 h-4 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="5" r="2.5" />
-                    <circle cx="5" cy="14" r="2.5" />
-                    <circle cx="19" cy="14" r="2.5" />
-                    <circle cx="8" cy="20" r="2.5" />
-                    <circle cx="16" cy="20" r="2.5" />
-                    <line x1="12" y1="7.5" x2="5" y2="11.5" />
-                    <line x1="12" y1="7.5" x2="19" y2="11.5" />
-                    <line x1="5" y1="14" x2="8" y2="17.5" />
-                    <line x1="19" y1="14" x2="16" y2="17.5" />
-                    <line x1="8" y1="20" x2="16" y2="20" />
-                  </svg>
-                  <span>{t.navSwarm}</span>
-                </>
-              )}
-            </NavLink>
-            <NavLink
-              to="/swarm/tasks"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
-                  isActive
-                    ? "text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-4 h-4 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-                  </svg>
-                  <span>{t.navTasks}</span>
-                </>
-              )}
-            </NavLink>
-            <NavLink
-              to="/swarm/knowledge"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
-                  isActive
-                    ? "text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-4 h-4 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-                  </svg>
-                  <span>{t.navKnowledge}</span>
-                </>
-              )}
-            </NavLink>
-            <NavLink
-              to="/swarm/crews"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
-                  isActive
-                    ? "text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-4 h-4 shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                  </svg>
-                  <span>{t.navCrews}</span>
-                </>
-              )}
-            </NavLink>
-          </div>
-        )}
-
         {/* Orchestrator section — admin only */}
         {!isUser && (
-          <div className="mt-6 px-3">
-            <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 px-2">
+          <div className="mt-4 mx-3 rounded-lg bg-surface/40 border border-border-subtle p-3">
+            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2 px-2">
               {t.orchestratorNav}
             </p>
             <NavLink
@@ -459,9 +367,9 @@ export function AdminLayout() {
               onClick={onNavigate}
               className={({ isActive }) =>
                 [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]",
                   isActive
-                    ? "text-text-primary font-medium"
+                    ? "text-text-primary font-medium bg-accent-pink/10"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
                 ].join(" ")
               }
@@ -476,7 +384,7 @@ export function AdminLayout() {
                   )}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 shrink-0"
+                    className="w-[18px] h-[18px] shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -496,9 +404,9 @@ export function AdminLayout() {
               onClick={onNavigate}
               className={({ isActive }) =>
                 [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]",
                   isActive
-                    ? "text-text-primary font-medium"
+                    ? "text-text-primary font-medium bg-accent-pink/10"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
                 ].join(" ")
               }
@@ -513,7 +421,7 @@ export function AdminLayout() {
                   )}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-4 h-4 shrink-0"
+                    className="w-[18px] h-[18px] shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -532,19 +440,36 @@ export function AdminLayout() {
         )}
 
         {/* Bottom section */}
-        <div className="px-3 pb-4 space-y-3 shrink-0">
+        <div className="mt-auto border-t border-border-subtle pt-3 px-3 pb-4 space-y-2 shrink-0">
+          {/* Web Chat external link — admin only */}
+          {!isUser && (
+            <a
+              href={window.location.origin}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-surface/50 transition-colors duration-150 border border-border-subtle"
+            >
+              <IconChat className="w-3.5 h-3.5 shrink-0" />
+              <span>{t.navWebui}</span>
+              <svg viewBox="0 0 20 20" className="w-3 h-3 ml-auto opacity-40" fill="currentColor" aria-hidden="true">
+                <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
+                <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z" />
+              </svg>
+            </a>
+          )}
+
           {/* User mode badge */}
           {isUser && (
-            <div className="px-3 py-2.5 rounded-md border border-accent-cyan/30 bg-accent-cyan/5">
+            <div className="px-3 py-2 rounded-md border border-accent-cyan/30 bg-accent-cyan/5">
               <p className="text-xs text-accent-cyan font-medium">
                 {t.userMode}
               </p>
             </div>
           )}
 
-          {/* Cluster status placeholder — admin only */}
+          {/* Cluster status — admin only */}
           {!isUser && (
-            <div className="px-3 py-2.5 rounded-md border border-border-subtle bg-surface/30">
+            <div className="px-3 py-2 rounded-md border border-border-subtle bg-surface/30">
               <p className="text-xs text-text-secondary font-[family-name:var(--font-mono)]">
                 {t.clusterStatus}
               </p>
@@ -554,7 +479,7 @@ export function AdminLayout() {
           {/* Language toggle */}
           <button
             onClick={() => setLang(lang === "zh" ? "en" : "zh")}
-            className="w-full flex items-center justify-center h-8 px-3 text-xs rounded-full border border-accent-cyan text-accent-cyan transition-colors duration-150 hover:bg-accent-cyan/10"
+            className="w-full flex items-center justify-center h-7 px-3 text-xs rounded-full border border-accent-cyan text-accent-cyan transition-colors duration-150 hover:bg-accent-cyan/10"
           >
             {t.languageSwitch}
           </button>
@@ -567,7 +492,7 @@ export function AdminLayout() {
     <div className="min-h-screen h-screen flex bg-background text-text-primary overflow-hidden">
       {/* ── Desktop sidebar ── */}
       <aside
-        className="hidden md:flex md:flex-col md:w-56 shrink-0 bg-sidebar-bg border-l border-accent-pink/20"
+        className="hidden md:flex md:flex-col md:w-56 shrink-0 bg-sidebar-bg border-r border-accent-pink/20"
         aria-label="Sidebar navigation"
       >
         <SidebarContent />

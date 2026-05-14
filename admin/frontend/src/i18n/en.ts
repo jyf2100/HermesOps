@@ -11,6 +11,7 @@ export const en: Translations = {
   navSettings: "Settings",
   navWebui: "Web Chat",
   navCreateAgent: "Create Agent",
+  navAgentPanel: "Agent Console",
 
   // Dashboard
   dashboard: "Dashboard",

@@ -8,6 +8,7 @@ export interface Translations {
   navSettings: string;
   navWebui: string;
   navCreateAgent: string;
+  navAgentPanel: string;
   // Dashboard
   dashboard: string;
   dashboardSubtitle: string;
@@ -854,6 +855,7 @@ export const zh: Translations = {
   navSettings: "设置",
   navWebui: "Web 对话",
   navCreateAgent: "创建 Agent",
+  navAgentPanel: "Agent 控制台",
 
   // Dashboard
   dashboard: "仪表盘",
