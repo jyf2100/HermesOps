@@ -241,6 +241,10 @@ class TemplateGenerator:
                             "name": "ops-panel",
                             "image": "ekkoye8888/hermes-web-ui",
                             "imagePullPolicy": "IfNotPresent",
+                            "command": ["/bin/sh", "-c"],
+                            "args": [
+                                "sed -i 's|\"/assets/|\"./assets/|g; s|\"/favicon|\"./favicon|g' /app/dist/client/index.html && node dist/server/index.js",
+                            ],
                             "ports": [{"containerPort": 6060}],
                             "env": [
                                 {"name": "HERMES_HOME", "value": "/opt/data"},
