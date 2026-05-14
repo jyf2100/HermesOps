@@ -243,7 +243,7 @@ class TemplateGenerator:
                             "imagePullPolicy": "IfNotPresent",
                             "command": ["/bin/sh", "-c"],
                             "args": [
-                                "sed -i 's|\"/assets/|\"./assets/|g; s|\"/favicon|\"./favicon|g' /app/dist/client/index.html && node dist/server/index.js",
+                                "sed -i 's|\"/assets/|\"./assets/|g; s|\"/favicon|\"./favicon|g' /app/dist/client/index.html && exec node dist/server/index.js",
                             ],
                             "ports": [{"containerPort": 6060}],
                             "env": [
@@ -251,6 +251,7 @@ class TemplateGenerator:
                                 {"name": "PORT", "value": "6060"},
                                 {"name": "HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN", "value": "0"},
                                 {"name": "HERMES_WEB_UI_API_BASE_URL", "value": "http://localhost:8642"},
+                                {"name": "HERMES_BIN", "value": "/opt/hermes/hermes"},
                             ],
                             "resources": {
                                 "requests": {"cpu": "50m", "memory": "128Mi"},
