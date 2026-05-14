@@ -92,7 +92,7 @@ Admin Panel 用户模式侧边栏：
 |------|------|------|
 | 数据卷 | 共享 `hermes-data` | ops-panel 直接读写 hermes-agent 数据，无需独立卷 |
 | 基础镜像 | `ekkoye8888/hermes-web-ui` | 独立构建的 web-ui 镜像 |
-| entrypoint | Dockerfile 已设置 `ENTRYPOINT` | 无需 K8s command 覆盖 |
+| entrypoint | K8s command 覆盖 | sed 替换 index.html 资产路径为相对路径，解决 SPA subpath 路由问题 |
 | fsGroup | `10000` | 解决跨容器文件权限竞争 |
 | hermes-web-ui 代码 | 无需修改 | `HERMES_HOME=/opt/data` 指向共享卷，web-ui 自动读取 |
 
@@ -104,6 +104,9 @@ Admin Panel 用户模式侧边栏：
 - name: ops-panel
   image: ekkoye8888/hermes-web-ui
   imagePullPolicy: IfNotPresent
+  command: ["/bin/sh", "-c"]
+  args:
+    - "sed -i 's|\"/assets/|\"./assets/|g; s|\"/favicon|\"./favicon|g' /app/dist/client/index.html && exec node dist/server/index.js"
   ports:
     - containerPort: 6060
   env:
@@ -115,6 +118,8 @@ Admin Panel 用户模式侧边栏：
       value: "0"
     - name: HERMES_WEB_UI_API_BASE_URL
       value: "http://localhost:8642"
+    - name: HERMES_BIN
+      value: "/opt/hermes/hermes"
   resources:
     requests:
       cpu: "50m"
@@ -192,7 +197,9 @@ Service 的 `ports` 数组追加：
 
 ## 4. hermes-web-ui 代码变更
 
-**无需修改 hermes-web-ui 代码。** ops-panel 通过 `HERMES_HOME=/opt/data` 直接读写 hermes-agent 数据（共享卷），web-ui 自身的临时数据（auth token、config）使用 Dockerfile 中默认的 `HOME=/home/agent` 路径。Dockerfile 已设置 `ENTRYPOINT ["node", "dist/server/index.js"]`，无需 K8s command 覆盖。
+**无需修改 hermes-web-ui 代码。** ops-panel 通过 `HERMES_HOME=/opt/data` 直接读写 hermes-agent 数据（共享卷），web-ui 自身的临时数据（auth token、config）使用 Dockerfile 中默认的 `HOME=/home/agent` 路径。
+
+**SPA 资产路径修复**：ops-panel 通过 Ingress subpath `/agent{N}/ops/` 提供服务时，Vite 构建的 HTML 中资产引用为绝对路径 `/assets/...`，浏览器会解析到根路径而非 subpath。通过 K8s command 覆盖，在启动前用 `sed` 将绝对路径替换为相对路径 `./assets/...`。
 
 关键环境变量：
 
@@ -202,6 +209,7 @@ Service 的 `ports` 数组追加：
 | `PORT` | `6060` | 服务端口 |
 | `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | `0` | 防止 web-ui 关闭时停掉 gateway |
 | `HERMES_WEB_UI_API_BASE_URL` | `http://localhost:8642` | 同 pod 内访问 gateway API |
+| `HERMES_BIN` | `/opt/hermes/hermes` | hermes 可执行文件路径（不在默认 PATH 中） |
 
 ---
 
