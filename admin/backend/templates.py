@@ -253,12 +253,12 @@ class TemplateGenerator:
                                 "limits": {"cpu": "250m", "memory": "512Mi"},
                             },
                             "readinessProbe": {
-                                "httpGet": {"path": "/", "port": 6060},
+                                "httpGet": {"path": "/health", "port": 6060},
                                 "initialDelaySeconds": 15, "periodSeconds": 30,
                                 "timeoutSeconds": 5, "failureThreshold": 6,
                             },
                             "livenessProbe": {
-                                "httpGet": {"path": "/", "port": 6060},
+                                "httpGet": {"path": "/health", "port": 6060},
                                 "initialDelaySeconds": 30, "periodSeconds": 30,
                                 "timeoutSeconds": 10, "failureThreshold": 5,
                             },

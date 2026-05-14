@@ -124,13 +124,13 @@ Admin Panel 用户模式侧边栏：
       memory: "512Mi"
   readinessProbe:
     httpGet:
-      path: /api/health
+      path: /health
       port: 6060
     initialDelaySeconds: 15
     periodSeconds: 30
   livenessProbe:
     httpGet:
-      path: /api/health
+      path: /health
       port: 6060
     initialDelaySeconds: 30
     periodSeconds: 30
