@@ -174,6 +174,7 @@ class TemplateGenerator:
                         **({"annotations": pod_annotations} if pod_annotations else {}),
                     },
                     "spec": {
+                        "securityContext": {"fsGroup": 10000},
                         "serviceAccountName": "hermes-gateway",
                         "containers": [{
                             "name": "gateway",
@@ -236,6 +237,34 @@ class TemplateGenerator:
                                 "limits": {"cpu": "200m", "memory": "256Mi"},
                             },
                             "volumeMounts": [{"name": "hermes-data", "mountPath": "/opt/data"}],
+                        }, {
+                            "name": "ops-panel",
+                            "image": "ekkoye8888/hermes-web-ui",
+                            "imagePullPolicy": "IfNotPresent",
+                            "ports": [{"containerPort": 6060}],
+                            "env": [
+                                {"name": "HERMES_HOME", "value": "/opt/data"},
+                                {"name": "PORT", "value": "6060"},
+                                {"name": "HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN", "value": "0"},
+                                {"name": "HERMES_WEB_UI_API_BASE_URL", "value": "http://localhost:8642"},
+                            ],
+                            "resources": {
+                                "requests": {"cpu": "50m", "memory": "128Mi"},
+                                "limits": {"cpu": "250m", "memory": "512Mi"},
+                            },
+                            "readinessProbe": {
+                                "httpGet": {"path": "/api/health", "port": 6060},
+                                "initialDelaySeconds": 15, "periodSeconds": 30,
+                                "timeoutSeconds": 5, "failureThreshold": 6,
+                            },
+                            "livenessProbe": {
+                                "httpGet": {"path": "/api/health", "port": 6060},
+                                "initialDelaySeconds": 30, "periodSeconds": 30,
+                                "timeoutSeconds": 10, "failureThreshold": 5,
+                            },
+                            "volumeMounts": [
+                                {"name": "hermes-data", "mountPath": "/opt/data"},
+                            ],
                         }],
                         "volumes": [{
                             "name": "hermes-data",
