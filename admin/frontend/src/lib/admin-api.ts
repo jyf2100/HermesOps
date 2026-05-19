@@ -209,6 +209,7 @@ export interface AgentDetail {
   health_ok: boolean | null;
   health_last_check: string | null;
   ingress_path: string | null;
+  webui_url?: string;
   restart_count: number;
   age_human: string;
 }
@@ -263,6 +264,7 @@ export interface ClusterStatus {
 export interface CreateAgentRequest {
   agent_number: number;
   display_name?: string;
+  template_id?: number;
   resources: {
     cpu_request: string;
     cpu_limit: string;
@@ -978,8 +980,8 @@ export const adminApi = {
   startWeixinQR(agentId: number): string {
     // EventSource cannot set custom headers, so pass auth as query param
     const authHeaders = getAuthHeaders();
-    const authKey = authHeaders["X-Admin-Key"] || authHeaders["X-User-Token"] || "";
-    const authParam = authHeaders["X-User-Token"] ? "token" : "key";
+    const authKey = authHeaders["X-Admin-Key"] || authHeaders["X-User-Token"] || authHeaders["X-Email-Token"] || "";
+    const authParam = authHeaders["X-User-Token"] ? "token" : authHeaders["X-Email-Token"] ? "email_token" : "key";
     return `${ADMIN_BASE}/agents/${agentId}/weixin/qr?${authParam}=${encodeURIComponent(authKey)}`;
   },
 
@@ -1273,6 +1275,32 @@ export const adminApi = {
 
   hubTaskStatus(agentId: number, taskId: string): Promise<HubTask> {
     return adminFetch(`/hub/agents/${agentId}/tasks/${taskId}`);
+  },
+
+  // -- Soul.md AI Generation --
+  generateSoul(params: {
+    name: string;
+    description: string;
+    provider: string;
+    api_key: string;
+    model: string;
+    base_url?: string;
+  }): Promise<{ soul_md: string }> {
+    return adminFetch("/profile-templates/generate-soul", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
+  generateSoulFromAgent(params: {
+    agent_number: number;
+    name: string;
+    description: string;
+  }): Promise<{ soul_md: string }> {
+    return adminFetch("/profile-templates/generate-soul-from-agent", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
   },
 
 };

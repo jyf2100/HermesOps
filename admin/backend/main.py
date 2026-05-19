@@ -10,7 +10,6 @@ import os
 import re
 import secrets as _secrets
 import time
-import redis as _redis
 from typing import Optional
 
 import httpx
@@ -44,7 +43,6 @@ from agent_manager import AgentManager
 from config_manager import ConfigManager
 from templates import TemplateGenerator, deployment_name
 from weixin import stream_weixin_qr, start_qr_session, end_qr_session, read_weixin_status, unbind_weixin
-from swarm_routes import router as swarm_router
 from terminal import router as terminal_router
 from file_browser import router as file_browser_router
 from kanban_routes import router as kanban_router
@@ -95,16 +93,14 @@ _orch_client: httpx.AsyncClient | None = None
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Hermes Admin API", openapi_url=None, docs_url=None)
 
-# Store admin key on app.state so all modules (including swarm_routes) read
-# from the same source.  This ensures key rotation via update_admin_key is
-# visible to every endpoint without restarting the process.
+# Store admin key on app.state so all modules read from the same source.
+# This ensures key rotation via update_admin_key is visible to every
+# endpoint without restarting the process.
 app.state.admin_key = ADMIN_KEY
 
 # K8s client will be stored on app.state after initialization (line ~242)
 # so hub_routes and other modules can access it via request.app.state.k8s.
 
-# Include swarm router
-app.include_router(swarm_router)
 app.include_router(terminal_router)
 app.include_router(file_browser_router)
 app.include_router(kanban_router)
@@ -166,6 +162,42 @@ class _SpaFallbackMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(_SpaFallbackMiddleware)
+
+
+# ---------------------------------------------------------------------------
+# Cache-control middleware for static assets
+# ---------------------------------------------------------------------------
+# Vite outputs content-hashed filenames (e.g. index-BitsWLYB.js).
+# Hashed assets under /assets/ can be cached forever; index.html must
+# always revalidate so the browser picks up new hashed filenames after
+# a redeploy.  Without these headers browsers may load stale JS from
+# cache, causing auth-param mismatches and "Connection lost" SSE errors.
+#
+# Regex matches Vite content hashes: an 8+ char alphanumeric segment
+# immediately before the file extension (e.g. index-BitsWLYB.js).
+
+_HASHED_ASSET_RE = re.compile(r"^/assets/[^-]+-[A-Za-z0-9_-]{8,}\.\w+$")
+
+
+class _CacheControlMiddleware(BaseHTTPMiddleware):
+    """Add Cache-Control headers to static file responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+
+        if _HASHED_ASSET_RE.match(path):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path == "/" or path.endswith("/index.html"):
+            response.headers["Cache-Control"] = "no-cache"
+        elif path.startswith("/assets/"):
+            # Non-hashed assets (unlikely but defensive)
+            response.headers["Cache-Control"] = "no-cache"
+
+        return response
+
+
+app.add_middleware(_CacheControlMiddleware)
 
 
 # ---------------------------------------------------------------------------
@@ -268,7 +300,7 @@ def _cleanup_expired_sse_tokens():
 
 @app.on_event("startup")
 async def _startup_cleanup():
-    """Schedule periodic SSE token cleanup and init swarm Redis."""
+    """Schedule periodic SSE token cleanup."""
     async def _sweep():
         while True:
             await asyncio.sleep(60)
@@ -280,17 +312,6 @@ async def _startup_cleanup():
     # P2.9: Start background sync retry
     asyncio.create_task(_retry_failed_syncs())
 
-    # Swarm Redis init
-    redis_url = os.environ.get("SWARM_REDIS_URL", "")
-    if redis_url:
-        try:
-            r = _redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=3)
-            r.ping()
-            app.state.swarm_redis = r
-        except Exception:
-            app.state.swarm_redis = None
-    else:
-        app.state.swarm_redis = None
 
 
 # ---------------------------------------------------------------------------
@@ -397,10 +418,19 @@ async def list_agents(request: Request):
 
 
 @app.post(f"{API_PREFIX}/agents", response_model=CreateAgentResponse,
-          status_code=201, dependencies=[auth, admin_only], tags=["agents"])
+          dependencies=[auth, admin_only], tags=["agents"])
 async def create_agent(req: CreateAgentRequest):
     """Create a new Hermes agent with full provisioning."""
-    return await manager.create_agent(req)
+    result = await manager.create_agent(req)
+    if not result.created:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "detail": "Agent creation failed",
+                "steps": [{"step": s.step, "label": s.label, "status": s.status, "message": s.message} for s in result.steps],
+            },
+        )
+    return JSONResponse(content=result.model_dump(), status_code=201)
 
 
 @app.get(f"{API_PREFIX}/agents/{{agent_id}}", response_model=AgentDetailResponse,
@@ -721,12 +751,14 @@ async def download_backup(request: Request, filename: str):
 
 @app.get(f"{API_PREFIX}/agents/{{agent_id}}/weixin/qr",
          tags=["agents-weixin"])
-async def weixin_qr_login(request: Request, agent_id: int, key: Optional[str] = Query(None, alias="key"), token: Optional[str] = Query(None, alias="token")):
+async def weixin_qr_login(request: Request, agent_id: int, key: Optional[str] = Query(None, alias="key"), token: Optional[str] = Query(None, alias="token"), email_token: Optional[str] = Query(None, alias="email_token")):
     """Initiate WeChat QR login session. Returns SSE stream.
 
     Uses query-param auth because EventSource cannot set custom headers.
-    Supports both admin key (?key=xxx) and user token (?token=xxx).
+    Supports admin key (?key=xxx), user token (?token=xxx), and email token (?email_token=xxx).
     """
+    logger.info("weixin QR request: agent_id=%s key=%s token=%s email_token=%s query=%s",
+                agent_id, bool(key), bool(token), bool(email_token), dict(request.query_params))
     is_authorized = False
     if key:
         admin_key = getattr(request.app.state, "admin_key", "")
@@ -736,6 +768,11 @@ async def weixin_qr_login(request: Request, agent_id: int, key: Optional[str] = 
         from auth import verify_user_token
         result = verify_user_token(token)
         if result and result[0] == agent_id:
+            is_authorized = True
+    if email_token and not is_authorized:
+        from auth import verify_email_token
+        result = verify_email_token(email_token)
+        if result and (result[2] is None or result[2] == agent_id):
             is_authorized = True
     if not is_authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -779,7 +816,15 @@ async def weixin_unbind(request: Request, agent_id: int):
     """Unbind WeChat from an agent."""
     aid = _aid(request, agent_id)
     agent_dir = os.path.join(HERMES_DATA_ROOT, f"agent{aid}")
-    unbind_weixin(agent_dir, aid)
+    result = unbind_weixin(agent_dir, aid)
+
+    if not result.get("unbound", True):
+        return WeixinActionResponse(
+            agent_number=aid,
+            action="unbind",
+            success=False,
+            message=result.get("error", "Failed to update agent .env file"),
+        )
 
     # Restart agent to pick up the changes
     msg = "WeChat unbound and agent restarted"
@@ -866,28 +911,31 @@ async def update_admin_key(request: Request, req: UpdateAdminKeyRequest):
     request.app.state.admin_key = req.new_key
 
     # Try K8s Secret first
+    secret_ok = False
     try:
         await k8s.replace_secret("hermes-admin-secret", {"admin_key": req.new_key})
+        secret_ok = True
     except Exception:
         try:
             await k8s.create_secret(name="hermes-admin-secret", data={"admin_key": req.new_key})
+            secret_ok = True
         except Exception:
             pass  # Fall through to file fallback
 
-    # File fallback
-    logger.warning(
-        "Admin key persisted to plaintext file (%s/_admin/admin_key) — "
-        "K8s Secret update failed; ensure this directory is excluded from backups",
-        HERMES_DATA_ROOT,
-    )
-    admin_dir = os.path.join(HERMES_DATA_ROOT, "_admin")
-    os.makedirs(admin_dir, exist_ok=True)
-    key_path = os.path.join(admin_dir, "admin_key")
-    tmp_path = key_path + ".tmp"
-    with open(tmp_path, "w") as f:
-        f.write(req.new_key)
-    os.replace(tmp_path, key_path)
-    os.chmod(key_path, 0o600)
+    if not secret_ok:
+        logger.warning(
+            "Admin key persisted to plaintext file (%s/_admin/admin_key) — "
+            "K8s Secret update failed; ensure this directory is excluded from backups",
+            HERMES_DATA_ROOT,
+        )
+        admin_dir = os.path.join(HERMES_DATA_ROOT, "_admin")
+        os.makedirs(admin_dir, exist_ok=True)
+        key_path = os.path.join(admin_dir, "admin_key")
+        tmp_path = key_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            f.write(req.new_key)
+        os.replace(tmp_path, key_path)
+        os.chmod(key_path, 0o600)
     return MessageResponse(message="Admin key updated")
 
 

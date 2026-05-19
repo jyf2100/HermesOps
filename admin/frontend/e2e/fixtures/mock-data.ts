@@ -129,6 +129,7 @@ export const mockAgentDetail = {
   health_ok: true,
   health_last_check: "2026-04-20T08:00:00Z",
   ingress_path: "/agent1",
+  webui_url: "http://agent1.172-32-153-184.nip.io:40080",
   restart_count: 0,
   age_human: "5d",
 };
@@ -233,8 +234,10 @@ export const mockCreateAgentResponse = {
     { step: 1, label: "Creating Secret", status: "done", message: "" },
     { step: 2, label: "Init Data", status: "done", message: "" },
     { step: 3, label: "Create Deployment", status: "done", message: "" },
-    { step: 4, label: "Update Ingress", status: "done", message: "" },
-    { step: 5, label: "Wait Ready", status: "done", message: "" },
+    { step: 4, label: "Create Service", status: "done", message: "" },
+    { step: 5, label: "Update Ingress", status: "done", message: "" },
+    { step: 6, label: "Create nip.io Ingress", status: "done", message: "" },
+    { step: 7, label: "Wait Ready", status: "done", message: "" },
   ],
 };
 

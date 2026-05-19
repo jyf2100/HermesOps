@@ -282,8 +282,14 @@ export interface Translations {
   deployStepSecret: string;
   deployStepInitData: string;
   deployStepCreateDeployment: string;
+  deployStepCreateService: string;
   deployStepUpdateIngress: string;
+  deployStepNipIngress: string;
   deployStepWaitReady: string;
+
+  // WebUI
+  webuiUrl: string;
+  webuiUrlHint: string;
 
   // Misc
   envVarCount: string;
@@ -1149,8 +1155,14 @@ export const zh: Translations = {
   deployStepSecret: "创建 Secret",
   deployStepInitData: "初始化数据",
   deployStepCreateDeployment: "创建 Deployment",
+  deployStepCreateService: "创建 Service",
   deployStepUpdateIngress: "更新 Ingress",
+  deployStepNipIngress: "创建 nip.io Ingress",
   deployStepWaitReady: "等待就绪",
+
+  // WebUI
+  webuiUrl: "WebUI 地址",
+  webuiUrlHint: "在浏览器中打开此地址访问 Agent 的 Web 界面",
 
   // Misc
   envVarCount: "{n} 个变量",

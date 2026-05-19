@@ -1,6 +1,6 @@
 import { Page } from "@playwright/test";
 
-export const ADMIN_KEY = process.env.ADMIN_KEY || "037a1b32e4b6a9131f565e2f24e7c864de765e64bc3b166bf2b41872347a7206";
+export const ADMIN_KEY = process.env.ADMIN_KEY || "Abcd@123";
 
 export async function loginAsAdmin(page: Page) {
   await page.goto("/admin/login");

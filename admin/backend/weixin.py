@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 import httpx
+import yaml
 
 logger = logging.getLogger("hermes-admin.weixin")
 
@@ -134,8 +135,11 @@ def _update_env_file(env_path: str, updates: dict[str, str]) -> None:
     """
     lines: list[str] = []
     if os.path.isfile(env_path):
-        with open(env_path) as fh:
-            lines = fh.readlines()
+        try:
+            with open(env_path) as fh:
+                lines = fh.readlines()
+        except PermissionError:
+            raise RuntimeError(f"Cannot read {env_path} — fix file permissions before updating")
 
     remove_keys = {k for k, v in updates.items() if v == ""}
     update_map = {k: v for k, v in updates.items() if v != ""}
@@ -166,7 +170,20 @@ def _update_env_file(env_path: str, updates: dict[str, str]) -> None:
     os.makedirs(os.path.dirname(env_path), exist_ok=True)
     with open(tmp_path, "w") as fh:
         fh.writelines(new_lines)
-    os.replace(tmp_path, env_path)
+    try:
+        os.replace(tmp_path, env_path)
+        try:
+            os.chmod(env_path, 0o600)
+        except OSError:
+            pass
+    except PermissionError:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise RuntimeError(
+            f"Cannot write {env_path} — fix file permissions"
+        )
 
 
 def _save_credentials(
@@ -178,7 +195,34 @@ def _save_credentials(
     user_id: str,
 ) -> None:
     """Persist Weixin credentials to .env and an account JSON file."""
-    # 1) Update .env
+    # 1) Enable weixin in config.yaml so gateway starts the adapter
+    config_path = os.path.join(agent_dir, "config.yaml")
+    try:
+        with open(config_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        platforms = cfg.setdefault("platforms", {})
+        wx = platforms.setdefault("weixin", {})
+        if not wx.get("enabled"):
+            wx["enabled"] = True
+            tmp = config_path + ".tmp"
+            with open(tmp, "w") as f:
+                yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+            try:
+                os.replace(tmp, config_path)
+            except OSError:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            try:
+                os.chown(config_path, 10000, 10000)
+            except OSError:
+                pass
+    except Exception as exc:
+        logger.warning("weixin: failed to enable weixin in config.yaml: %s", exc)
+
+    # 2) Update .env
     env_path = os.path.join(agent_dir, ".env")
     _update_env_file(env_path, {
         "WEIXIN_ACCOUNT_ID": account_id,
@@ -186,7 +230,7 @@ def _save_credentials(
         "WEIXIN_BASE_URL": base_url,
     })
 
-    # 2) Save account JSON
+    # 3) Save account JSON
     accounts_dir = os.path.join(agent_dir, "weixin", "accounts")
     os.makedirs(accounts_dir, exist_ok=True)
     # Restrict directory permissions -- contains auth tokens
@@ -420,17 +464,20 @@ def read_weixin_status(agent_dir: str, agent_id: int) -> dict[str, Any]:
 
     # Read .env for WEIXIN_ variables
     env_path = os.path.join(agent_dir, ".env")
+    env_vars: dict[str, str] = {}
     if os.path.isfile(env_path):
-        env_vars: dict[str, str] = {}
-        with open(env_path) as fh:
-            for line in fh:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                if "=" not in stripped:
-                    continue
-                key, _, value = stripped.partition("=")
-                env_vars[key.strip()] = value.strip().strip("\"'")
+        try:
+            with open(env_path) as fh:
+                for line in fh:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    if "=" not in stripped:
+                        continue
+                    key, _, value = stripped.partition("=")
+                    env_vars[key.strip()] = value.strip().strip("\"'")
+        except PermissionError:
+            logger.warning("weixin: cannot read .env for agent %d (permission denied)", agent_id)
 
         account_id = env_vars.get("WEIXIN_ACCOUNT_ID", "")
         token = env_vars.get("WEIXIN_TOKEN", "")
@@ -457,7 +504,6 @@ def read_weixin_status(agent_dir: str, agent_id: int) -> dict[str, Any]:
     config_path = os.path.join(agent_dir, "config.yaml")
     if os.path.isfile(config_path):
         try:
-            import yaml
             with open(config_path) as fh:
                 cfg = yaml.safe_load(fh) or {}
             weixin_cfg = (cfg.get("platforms") or {}).get("weixin") or {}
@@ -485,17 +531,20 @@ def unbind_weixin(agent_dir: str, agent_id: int) -> dict[str, Any]:
     # 1) Remove WEIXIN_ vars from .env
     env_path = os.path.join(agent_dir, ".env")
     if os.path.isfile(env_path):
-        _update_env_file(env_path, {
-            "WEIXIN_ACCOUNT_ID": "",
-            "WEIXIN_TOKEN": "",
-            "WEIXIN_BASE_URL": "",
-        })
+        try:
+            _update_env_file(env_path, {
+                "WEIXIN_ACCOUNT_ID": "",
+                "WEIXIN_TOKEN": "",
+                "WEIXIN_BASE_URL": "",
+            })
+        except RuntimeError as exc:
+            logger.error("weixin unbind: cannot update .env for agent %d: %s", agent_id, exc)
+            return {"agent_id": agent_id, "unbound": False, "error": str(exc)}
 
     # 2) Set weixin.enabled=false in config.yaml
     config_path = os.path.join(agent_dir, "config.yaml")
     if os.path.isfile(config_path):
         try:
-            import yaml
             with open(config_path) as fh:
                 cfg = yaml.safe_load(fh) or {}
             platforms = cfg.setdefault("platforms", {})

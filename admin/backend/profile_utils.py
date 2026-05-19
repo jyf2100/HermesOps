@@ -9,6 +9,7 @@ import asyncio
 import enum
 import hashlib
 import logging
+import shlex
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -32,9 +33,7 @@ _sync_locks: dict[tuple[int, str], asyncio.Lock] = {}
 
 def get_sync_lock(agent_number: int, profile_name: str) -> asyncio.Lock:
     key = (agent_number, profile_name)
-    if key not in _sync_locks:
-        _sync_locks[key] = asyncio.Lock()
-    return _sync_locks[key]
+    return _sync_locks.setdefault(key, asyncio.Lock())
 
 
 def cleanup_sync_locks():
@@ -174,6 +173,13 @@ async def sync_profile_to_pod(
             soul_path = f"/opt/data/profiles/{profile.profile_name}/SOUL.md"
             await k8s.write_file_to_pod(pod_name, soul_path, soul_md.encode("utf-8"))
 
+        # Fix ownership of entire profile directory (mkdir -p creates dirs as root)
+        profile_dir = f"/opt/data/profiles/{shlex.quote(profile.profile_name)}"
+        await k8s.run_command(pod_name, [
+            "sh", "-c",
+            f"chown -R $(id -u hermes):$(id -g hermes) {profile_dir}",
+        ])
+
         # Update DB state
         profile.sync_status = "synced"
         profile.sync_error = None
@@ -191,6 +197,24 @@ async def sync_profile_to_pod(
 
     await session.commit()
     await session.refresh(profile)
+
+    # Post-hook: auto-install template skills (best-effort, non-blocking)
+    try:
+        install_list = (merged.get("skills") or {}).get("install") or []
+        if install_list and profile.sync_status == "synced":
+            from hub_installer import install_skills_for_template
+            from hub_routes import _spawn_background
+            k8s_ref = get_k8s()
+            _spawn_background(install_skills_for_template(
+                agent_number, install_list, k8s_ref,
+            ))
+            logger.info(
+                "Triggered auto-install of %d skills for agent %d",
+                len(install_list), agent_number,
+            )
+    except Exception as exc:
+        logger.warning("Auto-install hook failed for agent %d: %s", agent_number, exc)
+
     return profile_to_dict(profile)
 
 

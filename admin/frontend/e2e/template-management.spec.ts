@@ -7,6 +7,7 @@ import {
   mockClonedTemplate,
   mockClusterStatus,
   mockEmptyAgentList,
+  mockAgentList,
   mockSkillsSummary,
   mockEmptySkillsSummary,
 } from "./fixtures/mock-data";
@@ -862,6 +863,196 @@ test.describe("Skills Management Tab", () => {
     // Should switch to Templates tab with filter
     await expect(page.locator("text=/Filter.*web-search/")).toBeVisible();
     await expect(page.locator("article")).toHaveCount(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI Soul Generation
+// ---------------------------------------------------------------------------
+
+test.describe("AI Soul Generation", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAsAdminEn(page);
+  });
+
+  test("shows AI generate button in create template editor", async ({ page }) => {
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await expect(page.locator('button:has-text("Generate with AI")')).toBeVisible();
+  });
+
+  test("does not show AI generate button for builtin template edit", async ({ page }) => {
+    await goToTemplates(page);
+    const firstCard = page.locator("article").first();
+    await firstCard.locator('button:has-text("Edit")').click();
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await expect(page.locator('button:has-text("Generate with AI")')).not.toBeVisible();
+  });
+
+  test("opens generation dialog with Agent selection dropdown", async ({ page }) => {
+    // Mock agents list for the dialog
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Click AI generate button
+    await page.click('button:has-text("Generate with AI")');
+
+    // Should open second dialog with agent dropdown
+    await expect(page.locator('text="Generate Role Prompt with AI"')).toBeVisible();
+    await expect(page.locator('select')).toBeVisible(); // Agent dropdown
+  });
+
+  test("generate button disabled when no agent selected", async ({ page }) => {
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await page.click('button:has-text("Generate with AI")');
+
+    // Generate button should be disabled without agent selection
+    const genBtn = page.locator('[role="dialog"] button:has-text("Generate")').last();
+    expect(await genBtn.isEnabled()).toBe(false);
+  });
+
+  test("successful generation fills soul.md textarea", async ({ page }) => {
+    let genBody: Record<string, unknown> | null = null;
+
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Fill display name and description for generation context
+    await page.fill('input[placeholder="Optional display name"]', "Test Agent");
+    await page.fill("textarea", "A helpful test agent");
+
+    // Mock the generate-soul-from-agent endpoint
+    await page.route("**/admin/api/profile-templates/generate-soul-from-agent", (route) => {
+      if (route.request().method() === "POST") {
+        genBody = route.request().postDataJSON();
+        return route.fulfill({
+          json: { soul_md: "你是一个专业的测试助手。你擅长帮助用户进行测试。" },
+        });
+      }
+      return route.fulfill({ status: 404, json: { detail: "Not found" } });
+    });
+
+    // Open generation dialog
+    await page.click('button:has-text("Generate with AI")');
+
+    // Select agent from dropdown
+    await page.selectOption('select', '1');
+
+    // Click generate
+    const genBtn = page.locator('[role="dialog"] button:has-text("Generate")').last();
+    await expect(genBtn).toBeEnabled();
+    await genBtn.click();
+
+    // Verify request was sent with correct params
+    await expect(() => {
+      expect(genBody).toBeTruthy();
+      expect(genBody!.agent_number).toBe(1);
+      expect(genBody!.name).toBe("Test Agent");
+      expect(genBody!.description).toBe("A helpful test agent");
+    }).toPass();
+
+    // Verify soul.md textarea was filled (the dialog should close on success)
+    const soulTextarea = page.locator("textarea").last();
+    await expect(soulTextarea).toHaveValue(/测试助手/);
+  });
+
+  test("shows overwrite warning when soul.md already has content", async ({ page }) => {
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Fill in soul.md textarea by placeholder
+    const soulTextarea = page.locator('textarea[placeholder="Custom system prompt for this template..."]');
+    await soulTextarea.fill("Existing soul content");
+
+    // Click AI generate
+    await page.click('button:has-text("Generate with AI")');
+
+    // Should show overwrite warning
+    await expect(page.locator('text="This will replace the current content"')).toBeVisible();
+  });
+
+  test("generation failure shows error toast", async ({ page }) => {
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Mock the generate-soul-from-agent endpoint to return error
+    await page.route("**/admin/api/profile-templates/generate-soul-from-agent", (route) => {
+      return route.fulfill({
+        status: 502,
+        json: { detail: "LLM returned empty response" },
+      });
+    });
+
+    await page.click('button:has-text("Generate with AI")');
+
+    // Select agent and generate
+    await page.selectOption('select', '1');
+
+    const genBtn = page.locator('[role="dialog"] button:has-text("Generate")').last();
+    await genBtn.click();
+
+    // Should show error toast
+    await expect(page.locator("text=/Generation failed|failed/i").first()).toBeVisible();
+  });
+
+  test("cancel button closes generation dialog", async ({ page }) => {
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await page.click('button:has-text("Generate with AI")');
+
+    await expect(page.locator('text="Generate Role Prompt with AI"')).toBeVisible();
+
+    // Click Cancel
+    await page.click('[role="dialog"] button:has-text("Cancel")');
+
+    // Generation dialog should close
+    await expect(page.locator('text="Generate Role Prompt with AI"')).not.toBeVisible();
+  });
+
+  test("shows no agents message when agent list is empty", async ({ page }) => {
+    await page.route("**/admin/api/agents", (route) =>
+      route.fulfill({ json: mockEmptyAgentList })
+    );
+
+    await goToTemplates(page);
+    await page.click('button:has-text("New Template")');
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+    await page.click('button:has-text("Generate with AI")');
+
+    // Should show "No agents available" message
+    await expect(page.getByText(/No agents available/i)).toBeVisible();
   });
 });
 

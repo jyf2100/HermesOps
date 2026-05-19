@@ -22,7 +22,9 @@ export function ChatPage() {
 
         const baseUrl = res.url.replace("/api/v1/auths/signin", "");
         const hash = `#email=${encodeURIComponent(res.email)}&password=${encodeURIComponent(res.password)}`;
-        setIframeSrc(`${baseUrl}/token-login.html${hash}`);
+        // Cache-bust to prevent stale SPA index.html from browser cache
+        const bust = `_t=${Date.now()}`;
+        setIframeSrc(`${baseUrl}/token-login.html?${bust}${hash}`);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof AdminApiError && err.status === 400) {

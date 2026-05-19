@@ -20,10 +20,35 @@ spec:
         kubectl.kubernetes.io/restartedAt: ""
     spec:
       serviceAccountName: hermes-admin
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      initContainers:
+        - name: fix-permissions
+          image: hermes-admin:latest
+          imagePullPolicy: Never
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /data/hermes/_admin/templates
+              mkdir -p /data/hermes/_backups
+              mkdir -p /data/hermes/hub-cache
+              chown -R 10000:10000 /data/hermes/ 2>/dev/null || true
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: hermes-data-root
+              mountPath: /data/hermes
       containers:
         - name: admin
           image: hermes-admin:latest
           imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 48082
@@ -55,6 +80,10 @@ spec:
               value: "http://172.32.153.184:40080"
             - name: ADMIN_CORS_ORIGINS
               value: "http://172.32.153.184:40080"
+            - name: CLUSTER_IP
+              value: "172.32.153.184"
+            - name: INGRESS_PORT
+              value: "40080"
             - name: ORCHESTRATOR_INTERNAL_URL
               value: "http://hermes-orchestrator:8080"
             - name: GITHUB_TOKEN
@@ -103,11 +132,11 @@ spec:
             failureThreshold: 12
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: "1"
+              memory: 2Gi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: "2"
+              memory: 4Gi
           volumeMounts:
             - name: hermes-data-root
               mountPath: /data/hermes
@@ -117,3 +146,4 @@ spec:
           hostPath:
             path: /data/hermes
             type: DirectoryOrCreate
+

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { adminApi } from "../../lib/admin-api";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { adminApi, adminFetch } from "../../lib/admin-api";
 import { useI18n } from "../../hooks/useI18n";
 import { showToast } from "../../lib/toast";
 import type { ProfileTemplateData } from "../../types/profile";
@@ -64,6 +64,144 @@ export function TemplateEditor({
   // Validation
   const [nameTouched, setNameTouched] = useState(false);
   const [configTouched, setConfigTouched] = useState(false);
+
+  // Skills install search state
+  const [skillSearch, setSkillSearch] = useState("");
+  const [skillResults, setSkillResults] = useState<Array<{ identifier: string; name: string; description?: string }>>([]);
+  const [skillSearching, setSkillSearching] = useState(false);
+  const skillSearchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const skillSearchRef = useRef<HTMLDivElement>(null);
+
+  // AI soul generation state
+  const [showGenDialog, setShowGenDialog] = useState(false);
+  const [genAgentNumber, setGenAgentNumber] = useState<number | null>(null);
+  const [genAgents, setGenAgents] = useState<Array<{ id: number; display_name?: string }>>([]);
+  const [genLoading, setGenLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const genAbortRef = useRef<AbortController | null>(null);
+
+  // Close search dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (skillSearchRef.current && !skillSearchRef.current.contains(e.target as Node)) {
+        setSkillResults([]);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // ----- AI soul generation helpers -----
+
+  const handleOpenGenDialog = useCallback(async () => {
+    setShowGenDialog(true);
+    setGenAgentNumber(null);
+    setGenLoading(true);
+    try {
+      const res = await adminApi.listAgents();
+      setGenAgents(res.agents.map((a) => ({ id: a.id, display_name: a.display_name })));
+    } catch {
+      setGenAgents([]);
+    } finally {
+      setGenLoading(false);
+    }
+  }, []);
+
+  const handleGenerate = useCallback(async () => {
+    if (!genAgentNumber) return;
+    if (soulMd.trim()) {
+      if (!window.confirm(t.templateGenerateSoulOverwriteWarning)) return;
+    }
+    setGenerating(true);
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+    try {
+      const result = await adminApi.generateSoulFromAgent({
+        agent_number: genAgentNumber,
+        name: displayName || name,
+        description,
+      });
+      setSoulMd(result.soul_md);
+      showToast(t.templateGenerateSoulSuccess);
+      setShowGenDialog(false);
+    } catch (err) {
+      showToast(
+        `${t.templateGenerateSoulFailed}: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    } finally {
+      setGenerating(false);
+      genAbortRef.current = null;
+    }
+  }, [genAgentNumber, soulMd, displayName, name, description, t]);
+
+  const handleCancelGen = useCallback(() => {
+    genAbortRef.current?.abort();
+    setGenerating(false);
+  }, []);
+
+  // ----- Derived: install list from config JSON -----
+
+  function parseConfig(json: string): Record<string, unknown> {
+    try {
+      return JSON.parse(json || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function getInstallList(): string[] {
+    const config = parseConfig(configJson);
+    const skills = config?.skills as Record<string, unknown> | undefined;
+    const install = skills?.install;
+    if (!Array.isArray(install)) return [];
+    return install.filter((s): s is string => typeof s === "string");
+  }
+
+  function addInstallSkill(identifier: string) {
+    const config = parseConfig(configJson);
+    if (!config.skills) config.skills = {};
+    if (!Array.isArray((config.skills as Record<string, unknown>).install)) {
+      (config.skills as Record<string, unknown>).install = [];
+    }
+    const install = (config.skills as Record<string, unknown>).install as string[];
+    if (!install.includes(identifier)) {
+      install.push(identifier);
+      setConfigJson(JSON.stringify(config, null, 2));
+    }
+    setSkillSearch("");
+    setSkillResults([]);
+  }
+
+  function removeInstallSkill(identifier: string) {
+    const config = parseConfig(configJson);
+    const skills = config?.skills as Record<string, unknown> | undefined;
+    if (skills && Array.isArray(skills.install)) {
+      skills.install = skills.install.filter((s: string) => s !== identifier);
+      setConfigJson(JSON.stringify(config, null, 2));
+    }
+  }
+
+  function handleSkillSearch(q: string) {
+    setSkillSearch(q);
+    if (skillSearchTimer.current) clearTimeout(skillSearchTimer.current);
+    if (!q.trim()) {
+      setSkillResults([]);
+      return;
+    }
+    skillSearchTimer.current = setTimeout(async () => {
+      setSkillSearching(true);
+      try {
+        const res = await adminFetch<{ results: Array<{ identifier: string; name: string; description?: string }> }>(
+          `/hub/search?q=${encodeURIComponent(q)}&limit=10`
+        );
+        setSkillResults(res.results || []);
+      } catch {
+        setSkillResults([]);
+      } finally {
+        setSkillSearching(false);
+      }
+    }, 300);
+  }
 
   // ----- Derived validation state -----
 
@@ -164,6 +302,7 @@ export function TemplateEditor({
   // ----- Render -----
 
   return (
+    <>
     <ModalOverlay onClose={onClose} className="w-full max-w-2xl max-h-[85vh]">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -244,6 +383,95 @@ export function TemplateEditor({
           disabled={isEdit && isBuiltin}
         />
 
+        {/* Skills to Install */}
+        <div className="border border-border rounded-lg p-3 space-y-2">
+          <div>
+            <span className="text-xs font-medium text-text-primary">
+              {t.templateSkillsInstall}
+            </span>
+            <p className="text-[10px] text-text-secondary mt-0.5">
+              {t.templateSkillsInstallDesc}
+            </p>
+          </div>
+
+          {/* Installed list */}
+          {(() => {
+            const installList = getInstallList();
+            return installList.length > 0 ? (
+            <ul className="space-y-1">
+              {installList.map((id) => (
+                <li
+                  key={id}
+                  className="flex items-center gap-2 text-xs bg-background rounded px-2 py-1.5 border border-border"
+                >
+                  <span className="font-[family-name:var(--font-mono)] text-text-primary truncate flex-1">
+                    {id}
+                  </span>
+                  {!(isEdit && isBuiltin) && (
+                    <button
+                      type="button"
+                      onClick={() => removeInstallSkill(id)}
+                      className="text-text-secondary hover:text-accent-pink transition-colors shrink-0"
+                      aria-label={`${t.templateSkillsInstallRemove} ${id}`}
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[10px] text-text-secondary italic">
+              {t.templateSkillsInstallEmpty}
+            </p>
+          );
+          })()}
+
+          {/* Search + add (not for builtin) */}
+          {!(isEdit && isBuiltin) && (
+            <div className="relative" ref={skillSearchRef}>
+              <input
+                type="text"
+                value={skillSearch}
+                onChange={(e) => handleSkillSearch(e.target.value)}
+                placeholder={t.templateSkillsInstallSearch}
+                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan"
+              />
+              {skillSearching && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-secondary">
+                  ...
+                </span>
+              )}
+
+              {/* Search results dropdown */}
+              {skillResults.length > 0 && (
+                <ul className="absolute z-20 left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-background border border-border rounded-md shadow-lg">
+                  {skillResults.map((r) => (
+                    <li key={r.identifier}>
+                      <button
+                        type="button"
+                        onClick={() => addInstallSkill(r.identifier)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-accent-cyan/10 transition-colors"
+                      >
+                        <span className="font-[family-name:var(--font-mono)] text-text-primary">
+                          {r.identifier}
+                        </span>
+                        {r.description && (
+                          <span className="block text-[10px] text-text-secondary mt-0.5 truncate">
+                            {r.description}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* SOUL.md */}
         <SoulMdEditor
           value={soulMd}
@@ -254,6 +482,15 @@ export function TemplateEditor({
           rows={6}
           disabled={isEdit && isBuiltin}
           placeholder={t.templateSoulPlaceholder}
+          actions={!(isEdit && isBuiltin) ? (
+            <button
+              type="button"
+              onClick={handleOpenGenDialog}
+              className="text-[10px] text-accent-cyan hover:text-accent-cyan/80 transition-colors"
+            >
+              {t.templateGenerateSoul}
+            </button>
+          ) : undefined}
         />
 
         {/* Builtin notice */}
@@ -290,6 +527,68 @@ export function TemplateEditor({
         </button>
       </div>
     </ModalOverlay>
+
+    {/* AI Soul Generation Dialog */}
+    {showGenDialog && (
+      <ModalOverlay onClose={() => { handleCancelGen(); setShowGenDialog(false); }} className="w-full max-w-md">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="text-base font-medium text-text-primary">
+            {t.templateGenerateSoulDialogTitle}
+          </h3>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          {/* Agent selection */}
+          <div>
+            <label className="text-xs text-text-secondary block mb-1">
+              {t.templateGenerateSoulSelectAgent}
+            </label>
+            {genLoading ? (
+              <p className="text-xs text-text-secondary">{t.loading}</p>
+            ) : genAgents.length === 0 ? (
+              <p className="text-xs text-amber-500">{t.templateGenerateSoulNoAgents}</p>
+            ) : (
+              <select
+                value={genAgentNumber ?? ""}
+                onChange={(e) => setGenAgentNumber(Number(e.target.value) || null)}
+                className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-cyan"
+              >
+                <option value="">{t.templateGenerateSoulSelectAgent}</option>
+                {genAgents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    Agent {a.id}{a.display_name ? ` — ${a.display_name}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Overwrite warning */}
+          {soulMd.trim() && (
+            <p className="text-[10px] text-amber-500">
+              {t.templateGenerateSoulOverwriteWarning}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2 justify-end px-6 py-4 border-t border-border">
+          <button
+            type="button"
+            onClick={() => { handleCancelGen(); setShowGenDialog(false); }}
+            className="px-4 py-2 text-sm rounded-md text-text-secondary hover:text-text-primary border border-border transition-colors"
+          >
+            {t.templateGenerateSoulCancel}
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating || !genAgentNumber}
+            className="px-4 py-2 text-sm rounded-md bg-accent-cyan text-white hover:bg-accent-cyan/90 disabled:opacity-50 transition-colors"
+          >
+            {generating ? t.templateGenerateSoulGenerating : t.templateGenerateSoulGenerate}
+          </button>
+        </div>
+      </ModalOverlay>
+    )}
+    </>
   );
 }
 

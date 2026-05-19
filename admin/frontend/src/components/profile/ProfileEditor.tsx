@@ -165,7 +165,6 @@ export function ProfileEditor({
   return (
     <ModalOverlay onClose={onClose} className="w-full max-w-2xl max-h-[85vh]">
       {/* Header */}
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <h3 className="text-lg font-medium text-text-primary">
             {isEdit ? t.profileEdit : t.profileCreate}

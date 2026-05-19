@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 interface SoulMdEditorProps {
   value: string;
@@ -9,6 +9,7 @@ interface SoulMdEditorProps {
   editLabel?: string;
   disabled?: boolean;
   placeholder?: string;
+  actions?: ReactNode;
 }
 
 export function SoulMdEditor({
@@ -20,17 +21,21 @@ export function SoulMdEditor({
   editLabel,
   disabled = false,
   placeholder,
+  actions,
 }: SoulMdEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        {label && (
-          <label className="text-xs text-text-secondary">
-            {label}
-          </label>
-        )}
+        <div className="flex items-center gap-2">
+          {label && (
+            <label className="text-xs text-text-secondary">
+              {label}
+            </label>
+          )}
+          {actions}
+        </div>
         {value && (
           <button
             type="button"

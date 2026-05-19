@@ -198,29 +198,49 @@ class K8sClient:
 
     # Ingress mutations (with lock for concurrent mutations)
 
-    async def add_ingress_path(self, path: str, service_name: str, service_port: int) -> None:
-        async with self._ingress_lock:
-            ingress_name = "hermes-ingress"
-            ingress = await self._k8s_call(
+    async def _ensure_agents_ingress(self):
+        """Get the shared agents ingress (hermes-ingress)."""
+        ingress_name = "hermes-ingress"
+        try:
+            return await self._k8s_call(
                 self.networking_api.read_namespaced_ingress,
                 name=ingress_name, namespace=self.namespace,
             )
-            new_path_rule = {
-                "path": f"{path}(/|$)(.*)",
-                "pathType": "Prefix",
-                "backend": {
-                    "service": {
-                        "name": service_name,
-                        "port": {"number": service_port},
-                    }
-                },
-            }
+        except Exception as e:
+            if hasattr(e, 'status') and e.status == 404:
+                raise RuntimeError(
+                    "Shared ingress 'hermes-ingress' not found. "
+                    "Apply kubernetes/gateway/ingress.yaml first."
+                ) from e
+            raise
+
+    async def add_ingress_path(self, path: str, service_name: str, service_port: int) -> None:
+        async with self._ingress_lock:
+            from kubernetes.client import (
+                V1HTTPIngressPath, V1IngressBackend,
+                V1IngressServiceBackend, V1ServiceBackendPort,
+            )
+            ingress_name = "hermes-ingress"
+            ingress = await self._ensure_agents_ingress()
             if not ingress.spec.rules:
                 raise RuntimeError("Ingress has no rules configured")
             paths = ingress.spec.rules[0].http.paths
+            expected_path = f"{path}(/|$)(.*)"
             for p in paths:
-                if p.path and p.path.startswith(path):
+                if not p.path:
+                    continue
+                if p.path == expected_path or p.path.startswith(f"{path}/"):
                     raise ValueError(f"Path {path} already exists in ingress")
+            new_path_rule = V1HTTPIngressPath(
+                path=expected_path,
+                path_type="Prefix",
+                backend=V1IngressBackend(
+                    service=V1IngressServiceBackend(
+                        name=service_name,
+                        port=V1ServiceBackendPort(number=service_port),
+                    )
+                ),
+            )
             paths.append(new_path_rule)
             await self._k8s_call(
                 self.networking_api.replace_namespaced_ingress,
@@ -230,23 +250,90 @@ class K8sClient:
     async def remove_ingress_path(self, path_prefix: str) -> None:
         async with self._ingress_lock:
             ingress_name = "hermes-ingress"
-            ingress = await self._k8s_call(
-                self.networking_api.read_namespaced_ingress,
-                name=ingress_name, namespace=self.namespace,
-            )
+            ingress = await self._ensure_agents_ingress()
             if not ingress.spec.rules:
                 return
             paths = ingress.spec.rules[0].http.paths
             original_len = len(paths)
+            expected_path = f"{path_prefix}(/|$)(.*)"
             ingress.spec.rules[0].http.paths = [
                 p for p in paths
-                if not (p.path and p.path.startswith(path_prefix))
+                if not (p.path and p.path == expected_path)
             ]
             if len(ingress.spec.rules[0].http.paths) < original_len:
                 await self._k8s_call(
                     self.networking_api.replace_namespaced_ingress,
                     name=ingress_name, namespace=self.namespace, body=ingress,
                 )
+
+    # --- Standalone WebUI resources ---
+
+    async def create_webui_deployment(self, body: dict) -> V1Deployment:
+        return await self._k8s_call(
+            self.apps_api.create_namespaced_deployment,
+            namespace=self.namespace, body=body,
+        )
+
+    async def delete_webui_deployment(self, name: str) -> None:
+        await self._k8s_call(
+            self.apps_api.delete_namespaced_deployment,
+            name=name, namespace=self.namespace,
+            grace_period_seconds=0, propagation_policy="Foreground",
+        )
+
+    async def create_webui_service(self, body: dict) -> V1Service:
+        return await self._k8s_call(
+            self.core_api.create_namespaced_service,
+            namespace=self.namespace, body=body,
+        )
+
+    async def delete_webui_service(self, name: str) -> None:
+        await self._k8s_call(
+            self.core_api.delete_namespaced_service,
+            name=name, namespace=self.namespace,
+        )
+
+    async def create_webui_ingress(self, body: dict) -> None:
+        from kubernetes.client import (
+            V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue,
+            V1HTTPIngressPath, V1IngressBackend, V1IngressServiceBackend,
+            V1ServiceBackendPort,
+        )
+        spec = body["spec"]
+        rule = spec["rules"][0]
+        path_cfg = rule["http"]["paths"][0]
+        svc = path_cfg["backend"]["service"]
+        v1_body = V1Ingress(
+            metadata={"name": body["metadata"]["name"],
+                      "namespace": body["metadata"]["namespace"],
+                      "annotations": body["metadata"].get("annotations", {})},
+            spec=V1IngressSpec(
+                ingress_class_name="nginx",
+                rules=[V1IngressRule(
+                    host=rule["host"],
+                    http=V1HTTPIngressRuleValue(paths=[V1HTTPIngressPath(
+                        path=path_cfg["path"],
+                        path_type=path_cfg["pathType"],
+                        backend=V1IngressBackend(
+                            service=V1IngressServiceBackend(
+                                name=svc["name"],
+                                port=V1ServiceBackendPort(number=svc["port"]["number"]),
+                            ),
+                        ),
+                    )]),
+                )],
+            ),
+        )
+        await self._k8s_call(
+            self.networking_api.create_namespaced_ingress,
+            namespace=self.namespace, body=v1_body,
+        )
+
+    async def delete_webui_ingress(self, name: str) -> None:
+        await self._k8s_call(
+            self.networking_api.delete_namespaced_ingress,
+            name=name, namespace=self.namespace,
+        )
 
     # Wait for deployment ready
     async def wait_deployment_ready(self, name: str, timeout_seconds: int = 300,
@@ -339,7 +426,10 @@ class K8sClient:
             if resp.peek_stderr():
                 stderr_parts.append(resp.read_stderr())
             return "".join(stdout_parts), "".join(stderr_parts)
+        except (kubernetes.client.ApiException, asyncio.TimeoutError, OSError) as e:
+            return "", str(e)
         except Exception as e:
+            logger.warning("Unexpected error in run_command: %s", e)
             return "", str(e)
 
     async def exec_pod(self, pod_name: str, command: list[str] | None = None, container: str | None = None):
@@ -594,7 +684,10 @@ done""",
         import shlex
         safe = shlex.quote(path)
         b64 = base64.b64encode(content).decode("ascii")
-        cmd = ["sh", "-c", f"mkdir -p $(dirname {safe}) && printf '%s' '{b64}' | base64 -d > {safe}"]
+        cmd = ["sh", "-c",
+            f"mkdir -p $(dirname {safe}) && "
+            f"printf '%s' '{b64}' | base64 -d > {safe} && "
+            f"chown $(id -u hermes):$(id -g hermes) {safe} 2>/dev/null || true"]
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(

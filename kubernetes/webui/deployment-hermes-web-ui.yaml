@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-webui-1
+  namespace: hermes-agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: hermes-webui-1
+  template:
+    metadata:
+      labels:
+        app: hermes-webui-1
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      volumes:
+        - name: hermes-data
+          hostPath:
+            path: /data/hermes/webui-1
+            type: DirectoryOrCreate
+        - name: webui-data
+          hostPath:
+            path: /data/hermes/webui-1/webui-data
+            type: DirectoryOrCreate
+      initContainers:
+        - name: fix-permissions
+          image: docker.io/ekkoye8888/hermes-web-ui:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /data/hermes/webui-1/hermes
+              mkdir -p /data/hermes/webui-1/hermes-web-ui
+              chown -R 10000:10000 /data/hermes/webui-1/ 2>/dev/null || true
+              mkdir -p /data/hermes/webui-1/webui-data
+              chown -R 10000:10000 /data/hermes/webui-1/webui-data 2>/dev/null || true
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /data/hermes/webui-1
+            - name: webui-data
+              mountPath: /app/dist/data
+      containers:
+        - name: hermes-web-ui
+          image: docker.io/ekkoye8888/hermes-web-ui:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 6060
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "6060"
+            - name: HERMES_HOME
+              value: "/opt/data"
+            - name: HERMES_WEB_UI_API_BASE_URL
+              value: "http://hermes-gateway-1:8642"
+            - name: HERMES_BIN
+              value: "/opt/hermes/hermes"
+            - name: HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN
+              value: "0"
+            - name: LOGIN_MAX_FAILURES
+              value: "0"
+            - name: HERMES_WEB_UI_HOME
+              value: "/opt/data/.webui"
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-gateway-1-secret
+                  key: api_key
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=4096"
+            - name: CORS_ORIGINS
+              value: "*"
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
+            - name: webui-data
+              mountPath: /app/dist/data
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6060
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6060
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi

@@ -140,149 +140,6 @@ class TemplateGenerator:
             }
         return yaml.dump(config_data, default_flow_style=False, allow_unicode=True)
 
-    def render_deployment(self, agent_number: int, secret_name: str,
-                          resources: ResourceSpec, namespace: str = "hermes-agent",
-                          display_name: str | None = None,
-                          tags: list[str] | None = None,
-                          role: str | None = None) -> dict:
-        """Return a dict for K8s Deployment creation."""
-        name = deployment_name(agent_number)
-        metadata = {"name": name, "namespace": namespace}
-        if display_name:
-            metadata["annotations"] = {"hermes/display-name": display_name}
-
-        # Pod template annotations — orchestrator reads from pod.metadata.annotations
-        pod_annotations: dict[str, str] = {}
-        if tags:
-            pod_annotations["hermes-agent.io/capabilities"] = ",".join(tags)
-        if role:
-            pod_annotations["hermes-agent.io/role"] = role
-
-        return {
-            "apiVersion": "apps/v1",
-            "kind": "Deployment",
-            "metadata": metadata,
-            "spec": {
-                "replicas": 1,
-                "selector": {"matchLabels": {"app": name}},
-                "template": {
-                    "metadata": {
-                        "labels": {
-                            "app": name,
-                            "app.kubernetes.io/component": "gateway",
-                        },
-                        **({"annotations": pod_annotations} if pod_annotations else {}),
-                    },
-                    "spec": {
-                        "securityContext": {"fsGroup": 10000},
-                        "serviceAccountName": "hermes-gateway",
-                        "containers": [{
-                            "name": "gateway",
-                            "image": "nousresearch/hermes-agent:latest",
-                            "imagePullPolicy": "IfNotPresent",
-                            "args": ["gateway"],
-                            "ports": [{"containerPort": 8642}],
-                            "env": [
-                                {"name": "API_SERVER_ENABLED", "value": "true"},
-                                {"name": "API_SERVER_HOST", "value": "0.0.0.0"},
-                                {"name": "API_SERVER_PORT", "value": "8642"},
-                                {"name": "API_SERVER_KEY", "valueFrom": {
-                                    "secretKeyRef": {"name": secret_name, "key": "api_key"}
-                                }},
-                                {"name": "API_SERVER_CORS_ORIGINS", "value": "*"},
-                                {"name": "GATEWAY_ALLOW_ALL_USERS", "value": "true"},
-                                {"name": "K8S_NAMESPACE", "value": namespace},
-                                {"name": "SANDBOX_POOL_NAME", "value": "hermes-sandbox-pool"},
-                                {"name": "SANDBOX_TTL_MINUTES", "value": "30"},
-                                {"name": "SWARM_REDIS_URL", "value": "redis://hermes-redis:6379/0"},
-                                {"name": "K8S_DEPLOYMENT", "value": name},
-                                {"name": "HERMES_AGENT_NUMBER", "value": str(agent_number)},
-                            ],
-                            "resources": {
-                                "requests": {"cpu": resources.cpu_request, "memory": resources.memory_request},
-                                "limits": {"cpu": resources.cpu_limit, "memory": resources.memory_limit},
-                            },
-                            "readinessProbe": {
-                                "httpGet": {"path": "/health", "port": 8642},
-                                "initialDelaySeconds": 60, "periodSeconds": 10,
-                                "timeoutSeconds": 5, "failureThreshold": 6,
-                            },
-                            "livenessProbe": {
-                                "httpGet": {"path": "/health", "port": 8642},
-                                "initialDelaySeconds": 120, "periodSeconds": 30,
-                                "timeoutSeconds": 10, "failureThreshold": 5,
-                            },
-                            "volumeMounts": [{"name": "hermes-data", "mountPath": "/opt/data"}],
-                        }, {
-                            "name": "dashboard",
-                            "image": "nousresearch/hermes-agent:latest",
-                            "imagePullPolicy": "IfNotPresent",
-                            "args": ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"],
-                            "ports": [{"containerPort": 9119}],
-                            "env": [
-                                {"name": "KANBAN_DB_PATH", "value": "/opt/data/kanban.db"},
-                            ],
-                            "readinessProbe": {
-                                "httpGet": {"path": "/api/plugins/kanban/board", "port": 9119},
-                                "initialDelaySeconds": 15, "periodSeconds": 30,
-                                "timeoutSeconds": 5, "failureThreshold": 6,
-                            },
-                            "livenessProbe": {
-                                "httpGet": {"path": "/api/plugins/kanban/board", "port": 9119},
-                                "initialDelaySeconds": 30, "periodSeconds": 30,
-                                "timeoutSeconds": 10, "failureThreshold": 5,
-                            },
-                            "resources": {
-                                "requests": {"cpu": "50m", "memory": "64Mi"},
-                                "limits": {"cpu": "200m", "memory": "256Mi"},
-                            },
-                            "volumeMounts": [{"name": "hermes-data", "mountPath": "/opt/data"}],
-                        }, {
-                            "name": "ops-panel",
-                            "image": "ekkoye8888/hermes-web-ui",
-                            "imagePullPolicy": "IfNotPresent",
-                            "command": ["/bin/sh", "-c"],
-                            "args": [
-                                "sed -i 's|\"/assets/|\"./assets/|g; s|\"/favicon|\"./favicon|g' /app/dist/client/index.html && exec node dist/server/index.js",
-                            ],
-                            "ports": [{"containerPort": 6060}],
-                            "env": [
-                                {"name": "HERMES_HOME", "value": "/opt/data"},
-                                {"name": "PORT", "value": "6060"},
-                                {"name": "HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN", "value": "0"},
-                                {"name": "HERMES_WEB_UI_API_BASE_URL", "value": "http://localhost:8642"},
-                                {"name": "HERMES_BIN", "value": "/opt/hermes/hermes"},
-                            ],
-                            "resources": {
-                                "requests": {"cpu": "50m", "memory": "128Mi"},
-                                "limits": {"cpu": "250m", "memory": "512Mi"},
-                            },
-                            "readinessProbe": {
-                                "httpGet": {"path": "/health", "port": 6060},
-                                "initialDelaySeconds": 15, "periodSeconds": 30,
-                                "timeoutSeconds": 5, "failureThreshold": 6,
-                            },
-                            "livenessProbe": {
-                                "httpGet": {"path": "/health", "port": 6060},
-                                "initialDelaySeconds": 30, "periodSeconds": 30,
-                                "timeoutSeconds": 10, "failureThreshold": 5,
-                            },
-                            "volumeMounts": [
-                                {"name": "hermes-data", "mountPath": "/opt/data"},
-                            ],
-                        }],
-                        "volumes": [{
-                            "name": "hermes-data",
-                            "hostPath": {
-                                "path": f"/data/hermes/agent{agent_number}",
-                                "type": "DirectoryOrCreate",
-                            },
-                        }],
-                    },
-                },
-            },
-        }
-
     def render_service(self, agent_number: int, namespace: str = "hermes-agent") -> dict:
         name = deployment_name(agent_number)
         return {
@@ -292,9 +149,8 @@ class TemplateGenerator:
             "spec": {
                 "type": "ClusterIP",
                 "ports": [
-                    {"name": "api", "port": 8642, "targetPort": 8642},
-                    {"name": "dashboard", "port": 9119, "targetPort": 9119},
-                    {"name": "ops", "port": 6060, "targetPort": 6060},
+                    {"name": "webui", "port": 6060, "targetPort": 6060},
+                    {"name": "gateway-api", "port": 8642, "targetPort": 8642},
                 ],
                 "selector": {"app": name},
             },
@@ -326,3 +182,201 @@ class TemplateGenerator:
         if not filename:
             raise ValueError(f"Unknown template type: {template_type}")
         self._write_template(filename, content)
+
+    # --- Merged gateway + webui deployment (local mode) ---
+
+    def render_webui_deployment(self, agent_number: int, secret_name: str,
+                                resources: ResourceSpec, namespace: str = "hermes-agent",
+                                display_name: str | None = None,
+                                tags: list[str] | None = None,
+                                role: str | None = None) -> dict:
+        """Return a merged gateway+webui Deployment dict (local mode).
+
+        Uses hermes-web-ui image which includes the hermes binary.
+        gateway-manager.ts spawns gateway as a child process (no HERMES_WEB_UI_API_BASE_URL).
+        Deployment name stays hermes-gateway-{N} for backward compatibility.
+        """
+        name = deployment_name(agent_number)
+        metadata: dict = {"name": name, "namespace": namespace}
+        if display_name:
+            metadata["annotations"] = {"hermes/display-name": display_name}
+
+        pod_annotations: dict[str, str] = {}
+        if tags:
+            pod_annotations["hermes-agent.io/capabilities"] = ",".join(tags)
+        if role:
+            pod_annotations["hermes-agent.io/role"] = role
+
+        return {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": metadata,
+            "spec": {
+                "replicas": 1,
+                "strategy": {"type": "Recreate"},
+                "selector": {"matchLabels": {"app": name}},
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": name,
+                            "app.kubernetes.io/component": "gateway",
+                        },
+                        **({"annotations": pod_annotations} if pod_annotations else {}),
+                    },
+                    "spec": {
+                        "serviceAccountName": "hermes-gateway",
+                        "terminationGracePeriodSeconds": 60,
+                        "securityContext": {
+                            "runAsUser": 10000,
+                            "runAsGroup": 10000,
+                            "fsGroup": 10000,
+                        },
+                        "initContainers": [{
+                            "name": "fix-permissions",
+                            "image": "docker.io/ekkoye8888/hermes-web-ui:latest",
+                            "imagePullPolicy": "IfNotPresent",
+                            "command": ["sh", "-c"],
+                            "args": [
+                                "mkdir -p /home/agent/.hermes/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home,cache} "
+                                "&& mkdir -p /home/agent/.hermes/webui-data "
+                                "&& { chown -R 10000:10000 /home/agent/.hermes 2>/dev/null || true; }"
+                            ],
+                            "securityContext": {"runAsUser": 0, "runAsNonRoot": False},
+                            "volumeMounts": [
+                                {"name": "hermes-data", "mountPath": "/home/agent/.hermes"},
+                            ],
+                        }],
+                        "containers": [{
+                            "name": "gateway",
+                            "image": "docker.io/ekkoye8888/hermes-web-ui:latest",
+                            "imagePullPolicy": "IfNotPresent",
+                            "securityContext": {
+                                "allowPrivilegeEscalation": False,
+                                "capabilities": {"drop": ["ALL"]},
+                            },
+                            "ports": [
+                                {"containerPort": 6060, "name": "webui", "protocol": "TCP"},
+                                {"containerPort": 8642, "name": "gateway-api", "protocol": "TCP"},
+                            ],
+                            "env": [
+                                # Web UI
+                                {"name": "PORT", "value": "6060"},
+                                {"name": "CORS_ORIGINS", "value": "*"},
+                                {"name": "LOGIN_MAX_FAILURES", "value": "0"},
+                                # Hermes paths (aligned with docker-compose.yml defaults)
+                                {"name": "HERMES_BIN", "value": "/opt/hermes/.venv/bin/hermes"},
+                                # Local mode: no HERMES_WEB_UI_API_BASE_URL
+                                {"name": "HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN", "value": "1"},
+                                {"name": "HERMES_ALLOW_ROOT_GATEWAY", "value": "1"},
+                                # Auth
+                                {"name": "AUTH_TOKEN", "valueFrom": {
+                                    "secretKeyRef": {"name": secret_name, "key": "api_key"}
+                                }},
+                                # Gateway runtime (inherited by child process via process.env)
+                                {"name": "API_SERVER_ENABLED", "value": "true"},
+                                {"name": "API_SERVER_HOST", "value": "0.0.0.0"},
+                                {"name": "API_SERVER_PORT", "value": "8642"},
+                                {"name": "API_SERVER_KEY", "valueFrom": {
+                                    "secretKeyRef": {"name": secret_name, "key": "api_key"}
+                                }},
+                                {"name": "API_SERVER_CORS_ORIGINS", "value": "*"},
+                                {"name": "GATEWAY_ALLOW_ALL_USERS", "value": "true"},
+                                {"name": "GATEWAY_HOST", "value": "127.0.0.1"},
+                                {"name": "K8S_NAMESPACE", "value": namespace},
+                                {"name": "K8S_DEPLOYMENT", "value": name},
+                                {"name": "HERMES_AGENT_NUMBER", "value": str(agent_number)},
+                                {"name": "SANDBOX_POOL_NAME", "value": "hermes-sandbox-pool"},
+                                {"name": "SANDBOX_TTL_MINUTES", "value": "30"},
+                                # Redis (with password)
+                                {"name": "SWARM_REDIS_URL",
+                                 "value": "redis://:$(REDIS_PASSWORD)@hermes-redis:6379/0"},
+                                {"name": "REDIS_PASSWORD", "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": "hermes-redis-secret",
+                                        "key": "redis-password",
+                                    }
+                                }},
+                                # Node.js tuning
+                                {"name": "NODE_OPTIONS", "value": "--max-old-space-size=768"},
+                            ],
+                            "resources": {
+                                "requests": {
+                                    "cpu": resources.cpu_request,
+                                    "memory": resources.memory_request,
+                                },
+                                "limits": {
+                                    "cpu": resources.cpu_limit,
+                                    "memory": resources.memory_limit,
+                                },
+                            },
+                            "readinessProbe": {
+                                "httpGet": {"path": "/health", "port": 6060},
+                                "initialDelaySeconds": 30, "periodSeconds": 10,
+                                "timeoutSeconds": 5, "failureThreshold": 6,
+                            },
+                            "livenessProbe": {
+                                "httpGet": {"path": "/health", "port": 6060},
+                                "initialDelaySeconds": 60, "periodSeconds": 30,
+                                "timeoutSeconds": 10, "failureThreshold": 5,
+                            },
+                            "volumeMounts": [
+                                {"name": "hermes-data", "mountPath": "/home/agent/.hermes"},
+                                {"name": "webui-home", "mountPath": "/home/agent/.hermes-web-ui"},
+                                {"name": "hermes-data", "mountPath": "/app/dist/data", "subPath": "webui-data"},
+                            ],
+                        }],
+                        "volumes": [
+                            {
+                                "name": "hermes-data",
+                                "hostPath": {
+                                    "path": f"/data/hermes/agent{agent_number}",
+                                    "type": "DirectoryOrCreate",
+                                },
+                            },
+                            {
+                                "name": "webui-home",
+                                "hostPath": {
+                                    "path": f"/data/hermes/agent{agent_number}/.webui",
+                                    "type": "DirectoryOrCreate",
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+        }
+
+    def render_nip_ingress(self, agent_number: int,
+                           namespace: str = "hermes-agent",
+                           cluster_ip: str = "172.32.153.184") -> dict:
+        """Return a nip.io domain Ingress for direct agent webui access."""
+        name = deployment_name(agent_number)
+        nip = cluster_ip.replace(".", "-")
+        host = f"agent{agent_number}.{nip}.nip.io"
+        return {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": {
+                "name": f"{name}-nip", "namespace": namespace,
+                "annotations": {
+                    "nginx.ingress.kubernetes.io/proxy-read-timeout": "3600",
+                    "nginx.ingress.kubernetes.io/proxy-send-timeout": "3600",
+                    "nginx.ingress.kubernetes.io/proxy-buffering": "off",
+                },
+            },
+            "spec": {
+                "ingress_class_name": "nginx",
+                "rules": [{
+                    "host": host,
+                    "http": {
+                        "paths": [{
+                            "path": "/",
+                            "pathType": "Prefix",
+                            "backend": {
+                                "service": {"name": name, "port": {"number": 6060}},
+                            },
+                        }],
+                    },
+                }],
+            },
+        }

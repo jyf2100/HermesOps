@@ -1,7 +1,7 @@
 """Hub skill bundle cache — stores downloaded skill bundles on the admin container.
 
 Cache directory layout:
-    /opt/data/hub-cache/
+    /data/hermes/hub-cache/
       <skill_name>/
         SKILL.md           (and any other bundle files)
         manifest.json      (source, hash, fetched_at, trust_level, stats)
@@ -32,7 +32,7 @@ logger = logging.getLogger("hermes-admin.hub_cache")
 # Configuration
 # ---------------------------------------------------------------------------
 
-CACHE_ROOT = Path(os.getenv("HUB_CACHE_DIR", "/opt/data/hub-cache"))
+CACHE_ROOT = Path(os.getenv("HUB_CACHE_DIR", "/data/hermes/hub-cache"))
 MAX_CACHE_SKILLS = int(os.getenv("HUB_CACHE_MAX_SKILLS", "100"))
 MAX_CACHE_SIZE_MB = int(os.getenv("HUB_CACHE_MAX_SIZE_MB", "50"))
 TTL_HOURS = int(os.getenv("HUB_CACHE_TTL_HOURS", "24"))
@@ -87,7 +87,8 @@ def _compute_content_hash(files: dict[str, bytes]) -> str:
     h = hashlib.sha256()
     for fname in sorted(files):
         h.update(fname.encode("utf-8"))
-        h.update(files[fname])
+        content = files[fname]
+        h.update(content if isinstance(content, bytes) else content.encode("utf-8"))
     return h.hexdigest()[:32]
 
 
@@ -153,7 +154,7 @@ def _store_sync(
             raise ValueError(f"Unsafe file path in skill bundle: {fname}")
         fpath = skill_dir / fname
         fpath.parent.mkdir(parents=True, exist_ok=True)
-        fpath.write_bytes(content)
+        fpath.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
 
     content_hash = _compute_content_hash(files)
     now = datetime.now(timezone.utc)
@@ -166,7 +167,7 @@ def _store_sync(
         "trust_level": trust_level,
         "fetched_at": now.isoformat(),
         "file_count": len(files),
-        "total_size": sum(len(v) for v in files.values()),
+        "total_size": sum(len(v.encode("utf-8")) if isinstance(v, str) else len(v) for v in files.values()),
     }
     _write_manifest(skill_dir, manifest)
 
@@ -178,7 +179,7 @@ def _store_sync(
         trust_level=trust_level,
         fetched_at=now,
         file_count=len(files),
-        total_size=sum(len(v) for v in files.values()),
+        total_size=sum(len(v.encode("utf-8")) if isinstance(v, str) else len(v) for v in files.values()),
         cache_path=skill_dir.resolve(),
         files=files,
     )

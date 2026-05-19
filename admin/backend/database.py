@@ -19,7 +19,7 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://hermes:hermes_pg_2024@postgres:5432/hermes_admin",
 )
 
-engine = create_async_engine(DATABASE_URL, echo=False, pool_size=5, max_overflow=10)
+engine = create_async_engine(DATABASE_URL, echo=False, pool_size=5, max_overflow=10, pool_pre_ping=True)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 AsyncSessionLocal = async_session
 
@@ -172,12 +172,17 @@ _MIGRATION_SQL: list[str] = [
     CREATE INDEX IF NOT EXISTS ix_audit_created
       ON profile_audit_log (created_at DESC)
     """,
+    # CHECK constraint on profile_audit_log.action
+    """
+    ALTER TABLE profile_audit_log DROP CONSTRAINT IF EXISTS ck_audit_action;
+    ALTER TABLE profile_audit_log ADD CONSTRAINT ck_audit_action CHECK (action IN ('create', 'update', 'delete'));
+    """,
 ]
 
-_CLEANUP_SQL = """
-    DELETE FROM skill_report_ids
-    WHERE processed_at < NOW() - INTERVAL '7 days'
-"""
+_CLEANUP_SQL: list[str] = [
+    "DELETE FROM skill_report_ids WHERE processed_at < NOW() - INTERVAL '7 days'",
+    "DELETE FROM profile_audit_log WHERE created_at < NOW() - INTERVAL '90 days'",
+]
 
 
 async def _run_migrations() -> None:
@@ -198,11 +203,15 @@ async def _run_migrations() -> None:
     # Cleanup stale report-id records
     try:
         async with engine.begin() as conn:
-            result = await conn.execute(text(_CLEANUP_SQL))
-            if result.rowcount:
-                logger.info("Cleaned up %d stale skill_report_ids records", result.rowcount)
+            for sql in _CLEANUP_SQL:
+                try:
+                    result = await conn.execute(text(sql))
+                    if result.rowcount:
+                        logger.info("Cleanup: %d rows affected — %s", result.rowcount, sql[:80])
+                except Exception as exc:
+                    logger.warning("Cleanup statement skipped: %s", exc)
     except Exception as exc:
-        logger.warning("skill_report_ids cleanup skipped: %s", exc)
+        logger.warning("Database cleanup skipped: %s", exc)
 
 
 async def init_db() -> None:
@@ -232,7 +241,7 @@ async def init_db() -> None:
 
 
 async def _seed_builtin_templates(session: AsyncSession) -> None:
-    """Insert built-in profile templates using INSERT ON CONFLICT DO NOTHING."""
+    """Upsert built-in profile templates. Updates existing builtins on re-deploy."""
     import json
 
     _BASE_MODEL_CONFIG = json.dumps({"model": {"default": "glm-4.7", "provider": "custom"}})
@@ -243,7 +252,10 @@ async def _seed_builtin_templates(session: AsyncSession) -> None:
             "display_name": "Researcher",
             "description": "专注于深度调研、信息搜集与结构化分析的模板",
             "soul_md": "你是一个专业的调研分析师。你擅长从海量信息中提取关键洞察，进行系统性分析，并产出结构化的调研报告。你的回答需要基于事实、数据支撑，逻辑清晰，条理分明。",
-            "config_overrides": _BASE_MODEL_CONFIG,
+            "config_overrides": json.dumps({
+                "model": {"default": "glm-4.7", "provider": "custom"},
+                "skills": {"install": ["skills-sh/obra/superpowers/skills/brainstorming"]},
+            }),
         },
         {
             "name": "writer",
@@ -275,7 +287,7 @@ async def _seed_builtin_templates(session: AsyncSession) -> None:
             "soul_md": "你是一个专业的代码审查员。你擅长发现代码中的潜在问题、安全漏洞和性能瓶颈。你的审查意见基于最佳实践和工程标准，注重可读性、可维护性和健壮性。",
             "config_overrides": json.dumps({
                 "model": {"default": "glm-4.7", "provider": "custom"},
-                "skills": {"enabled": ["web-search"], "disabled": ["file-upload"]},
+                "skills": {"enabled": ["web-search"], "disabled": ["file-upload"], "install": []},
             }),
         },
         {
@@ -285,7 +297,7 @@ async def _seed_builtin_templates(session: AsyncSession) -> None:
             "soul_md": "你是一个测试工程师。你精通单元测试、集成测试、E2E测试等各类测试方法论，擅长设计测试策略、编写测试用例、构建自动化测试流水线。你关注边界条件和异常场景的覆盖。",
             "config_overrides": json.dumps({
                 "model": {"default": "glm-4.7", "provider": "custom"},
-                "skills": {"enabled": ["web-search", "code-exec"], "disabled": []},
+                "skills": {"enabled": ["web-search", "code-exec"], "disabled": [], "install": ["skills-sh/obra/superpowers/skills/systematic-debugging"]},
             }),
         },
         {
@@ -295,7 +307,7 @@ async def _seed_builtin_templates(session: AsyncSession) -> None:
             "soul_md": "你是一个前端开发工程师。你精通 React、Vue、TypeScript 等现代前端技术栈，熟悉 CSS 动画、响应式设计、Web 性能优化。你注重用户体验、代码规范和组件化架构。",
             "config_overrides": json.dumps({
                 "model": {"default": "glm-4.7", "provider": "custom"},
-                "skills": {"enabled": ["web-search", "code-exec", "file-upload"], "disabled": []},
+                "skills": {"enabled": ["web-search", "code-exec", "file-upload"], "disabled": [], "install": ["skills-sh/obra/superpowers/skills/writing-plans"]},
             }),
         },
     ]
@@ -308,7 +320,13 @@ async def _seed_builtin_templates(session: AsyncSession) -> None:
                     (name, display_name, description, soul_md, config_overrides, is_builtin)
                 VALUES
                     (:name, :display_name, :description, :soul_md, CAST(:config_overrides AS jsonb), true)
-                ON CONFLICT (name) DO NOTHING
+                ON CONFLICT (name) DO UPDATE SET
+                    config_overrides = CAST(EXCLUDED.config_overrides AS jsonb),
+                    display_name = EXCLUDED.display_name,
+                    description = EXCLUDED.description,
+                    soul_md = EXCLUDED.soul_md,
+                    updated_at = NOW()
+                WHERE profile_templates.is_builtin = true
                 """
             ),
             {

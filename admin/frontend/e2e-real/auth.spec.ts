@@ -55,13 +55,13 @@ test.describe("Login Page", () => {
 
   test("login with correct admin key navigates to dashboard", async ({ page }) => {
     await page.getByRole("button", { name: /^管理员$/ }).click();
-    const ADMIN_KEY = process.env.ADMIN_KEY || "037a1b32e4b6a9131f565e2f24e7c864de765e64bc3b166bf2b41872347a7206";
+    const ADMIN_KEY = process.env.ADMIN_KEY || "Abcd@123";
     await page.locator("#login-key-input").fill(ADMIN_KEY);
     await page.getByRole("button", { name: /登录|login/i }).click();
     await page.waitForURL(/\/admin\/?$/, { timeout: 10000 }).catch(() => {});
-    // Verify we left the login page (may land on dashboard or still login if API is slow)
     const url = page.url();
-    expect(url).toContain("/admin");
+    // Must have left /admin/login — dashboard is /admin/ or /admin
+    expect(url).not.toContain("/login");
     await page.screenshot({ path: "test-results/auth-correct-key.png", fullPage: true });
   });
 

@@ -5,6 +5,9 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   base: '/admin/',
   plugins: [react(), tailwindcss()],
+  define: {
+    __BUILD_HASH__: JSON.stringify(process.env.BUILD_HASH ?? Date.now().toString(36)),
+  },
   build: { outDir: 'dist', sourcemap: false },
   server: {
     proxy: {

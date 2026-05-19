@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-admin
+  namespace: hermes-agent
+spec:
+  template:
+    spec:
+      containers:
+        - name: admin
+          env:
+            - name: EXTERNAL_WEBUI_URL
+              value: "http://172.32.153.183:40080"
+            - name: EXTERNAL_API_BASE
+              value: "http://172.32.153.183:40080"
+            - name: EXTERNAL_URL_PREFIX
+              value: "http://172.32.153.183:40080"
+            - name: ADMIN_CORS_ORIGINS
+              value: "http://172.32.153.183:40080"
+            - name: CLUSTER_IP
+              value: "172.32.153.183"
+            - name: INGRESS_PORT
+              value: "40080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-database-secret
+                  key: database-url
+            - name: ORCHESTRATOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-admin-env-secrets
+                  key: orchestrator-api-key
+            - name: ADMIN_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-admin-internal-secret
+                  key: admin_internal_token
+            - name: SWARM_REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@hermes-redis:6379/0"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-redis-secret
+                  key: redis-password

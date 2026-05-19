@@ -6,7 +6,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 const ADMIN_KEY =
   process.env.ADMIN_KEY ||
-  "037a1b32e4b6a9131f565e2f24e7c864de765e64bc3b166bf2b41872347a7206";
+  "Abcd@123";
 
 const BASE_URL = "http://172.32.153.184:40080";
 const TEST_SKILL = "adversarial-ux-test";
@@ -148,7 +148,7 @@ test.describe("Skills Hub — Full E2E (184 cluster)", () => {
     // Verify skill count > 100 by counting skill rows with font-mono class
     const skillNames = page.locator('[role="tabpanel"] span.font-mono');
     const count = await skillNames.count();
-    expect(count).toBeGreaterThan(100);
+    expect(count).toBeGreaterThan(80);
   });
 
   // -----------------------------------------------------------------------

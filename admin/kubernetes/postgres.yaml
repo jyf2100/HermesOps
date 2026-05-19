@@ -78,6 +78,7 @@ metadata:
   name: postgres-secret
   namespace: hermes-agent
 type: Opaque
+# This secret is created/managed by deploy.sh. Do not put real passwords here.
 stringData:
-  password: "hermes_pg_2024"
-  database-url: "postgresql+asyncpg://hermes:hermes_pg_2024@postgres:5432/hermes_admin"
+  password: "GENERATED_BY_DEPLOY_SCRIPT"
+  database-url: "postgresql+asyncpg://hermes:GENERATED_BY_DEPLOY_SCRIPT@postgres:5432/hermes_admin"

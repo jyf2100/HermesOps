@@ -5,6 +5,8 @@ metadata:
   namespace: hermes-agent
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: hermes-gateway-2
@@ -18,14 +20,68 @@ spec:
         app.kubernetes.io/component: gateway
     spec:
       serviceAccountName: hermes-gateway
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+      initContainers:
+        - name: fix-permissions
+          image: docker.io/ekkoye8888/hermes-web-ui:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /opt/data/{cron,sessions,logs,hooks,memories,skills,skins,plans,workspace,home,cache}
+              mkdir -p /opt/data/.webui/upload
+              mkdir -p /app/dist/data
+              chown -R 10000:10000 /opt/data 2>/dev/null || true
+              chown -R 10000:10000 /app/dist/data 2>/dev/null || true
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: hermes-data
+              mountPath: /opt/data
+            - name: webui-data
+              mountPath: /app/dist/data
       containers:
         - name: gateway
-          image: nousresearch/hermes-agent:latest
+          image: docker.io/ekkoye8888/hermes-web-ui:latest
           imagePullPolicy: IfNotPresent
-          args: ["gateway"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
+            - containerPort: 6060
+              name: webui
+              protocol: TCP
             - containerPort: 8642
+              name: gateway-api
+              protocol: TCP
           env:
+            - name: PORT
+              value: "6060"
+            - name: CORS_ORIGINS
+              value: "*"
+            - name: LOGIN_MAX_FAILURES
+              value: "0"
+            - name: HERMES_HOME
+              value: "/opt/data"
+            - name: HERMES_BIN
+              value: "/opt/hermes/hermes"
+            - name: HERMES_WEB_UI_HOME
+              value: "/opt/data/.webui"
+            - name: HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN
+              value: "1"
+            - name: HERMES_ALLOW_ROOT_GATEWAY
+              value: "1"
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-gateway-2-secret
+                  key: api_key
             - name: API_SERVER_ENABLED
               value: "true"
             - name: API_SERVER_HOST
@@ -35,50 +91,69 @@ spec:
             - name: API_SERVER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: hermes-db-secret
-                  key: api_key_2
+                  name: hermes-gateway-2-secret
+                  key: api_key
+            - name: API_SERVER_CORS_ORIGINS
+              value: "*"
             - name: GATEWAY_ALLOW_ALL_USERS
               value: "true"
+            - name: GATEWAY_HOST
+              value: "127.0.0.1"
             - name: K8S_NAMESPACE
               value: "hermes-agent"
+            - name: K8S_DEPLOYMENT
+              value: "hermes-gateway-2"
+            - name: HERMES_AGENT_NUMBER
+              value: "2"
             - name: SANDBOX_POOL_NAME
               value: "hermes-sandbox-pool"
             - name: SANDBOX_TTL_MINUTES
               value: "30"
             - name: SWARM_REDIS_URL
-              value: "redis://hermes-redis:6379/0"
-            - name: K8S_DEPLOYMENT
-              value: "hermes-gateway-2"
+              value: "redis://:$(REDIS_PASSWORD)@hermes-redis:6379/0"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hermes-redis-secret
+                  key: redis-password
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=768"
           resources:
             requests:
-              cpu: 250m
-              memory: 512Mi
+              cpu: 500m
+              memory: 768Mi
             limits:
-              cpu: 1000m
-              memory: 1Gi
+              cpu: 2000m
+              memory: 2Gi
           readinessProbe:
             httpGet:
               path: /health
-              port: 8642
-            initialDelaySeconds: 60
+              port: 6060
+            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
-              port: 8642
-            initialDelaySeconds: 120
+              port: 6060
+            initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 5
           volumeMounts:
             - name: hermes-data
               mountPath: /opt/data
+            - name: webui-data
+              mountPath: /app/dist/data
       volumes:
         - name: hermes-data
           hostPath:
             path: /data/hermes/agent2
+            type: DirectoryOrCreate
+        - name: webui-data
+          hostPath:
+            path: /data/hermes/agent2/webui-data
             type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -89,7 +164,10 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: api
+    - name: webui
+      port: 6060
+      targetPort: 6060
+    - name: gateway-api
       port: 8642
       targetPort: 8642
   selector:

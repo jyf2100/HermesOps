@@ -28,9 +28,6 @@ import { showToast } from "../lib/toast";
 import { WeChatCard } from "../components/WeChatCard";
 import { WeChatQRModal } from "../components/WeChatQRModal";
 import { TerminalTab } from "../components/TerminalTab";
-import { KanbanTab } from "../components/kanban/KanbanTab";
-import { ProfileList } from "../components/profile/ProfileList";
-import { AgentSkillsTab } from "../components/hub/AgentSkillsTab";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,7 +58,7 @@ function logLineColor(line: string): string {
 // Tab definitions
 // ---------------------------------------------------------------------------
 
-const TAB_IDS = ["overview", "config", "logs", "events", "health", "terminal", "kanban", "profiles", "skills"] as const;
+const TAB_IDS = ["overview", "config", "logs", "events", "health", "terminal"] as const;
 type TabId = (typeof TAB_IDS)[number];
 
 // ---------------------------------------------------------------------------
@@ -123,6 +120,11 @@ export function AgentDetailPage() {
     const interval = setInterval(loadAgent, 10_000);
     return () => clearInterval(interval);
   }, [loadAgent]);
+
+  // Memoized callbacks to prevent modal/drawer re-renders during 10s polling
+  const handleCloseWeixinQR = useCallback(() => setWeixinQROpen(false), []);
+  const handleRegisterWeChat = useCallback(() => setWeixinQROpen(true), []);
+  const handleCancelConfirm = useCallback(() => setConfirmDialog(null), []);
 
   async function doAction(action: () => Promise<unknown>, label: string) {
     setActionLoading(label);
@@ -269,7 +271,7 @@ export function AgentDetailPage() {
 
       {/* Tab content */}
       {activeTab === "overview" && (
-        <OverviewTab agent={agent} onRegisterWeChat={() => setWeixinQROpen(true)} onRefresh={loadAgent} isUser={isUser} />
+        <OverviewTab agent={agent} onRegisterWeChat={handleRegisterWeChat} onRefresh={loadAgent} isUser={isUser} />
       )}
       {activeTab === "config" && (
         <ConfigTab agentId={agentId} />
@@ -288,23 +290,11 @@ export function AgentDetailPage() {
         <TerminalTab agentId={agentId} />
       )}
 
-      {activeTab === "kanban" && (
-        <KanbanTab agentId={agentId} />
-      )}
-
-      {activeTab === "profiles" && (
-        <ProfileList agentId={agentId} />
-      )}
-
-      {activeTab === "skills" && (
-        <AgentSkillsTab agentId={agentId} isRunning={agent?.status === "running"} />
-      )}
-
       {/* WeChat QR Modal */}
       <WeChatQRModal
         agentId={agentId}
         open={weixinQROpen}
-        onClose={() => setWeixinQROpen(false)}
+        onClose={handleCloseWeixinQR}
         onSuccess={loadAgent}
       />
 
@@ -327,7 +317,7 @@ export function AgentDetailPage() {
             );
           }
         }}
-        onCancel={() => setConfirmDialog(null)}
+        onCancel={handleCancelConfirm}
       />
     </div>
   );
@@ -509,6 +499,10 @@ function OverviewTab({ agent, onRegisterWeChat, onRefresh, isUser }: { agent: Ag
   const [showResourceEdit, setShowResourceEdit] = useState(false);
   const [showResourceView, setShowResourceView] = useState(false);
 
+  const handleCloseResourceEdit = useCallback(() => setShowResourceEdit(false), []);
+  const handleResourceSaved = useCallback(() => { onRefresh(); }, [onRefresh]);
+  const handleCloseResourceView = useCallback(() => setShowResourceView(false), []);
+
   async function handleTestApi() {
     setTesting(true);
     setTestResult(null);
@@ -674,6 +668,39 @@ function OverviewTab({ agent, onRegisterWeChat, onRefresh, isUser }: { agent: Ag
         </div>
       )}
 
+      {/* WebUI URL */}
+      {agent.webui_url && (() => {
+        const displayUrl = agent.webui_url.replace(/([?&])token=[^&]+/, "$1token=***");
+        const copyUrl = agent.webui_url
+          .replace(/[?&]token=[^&]+/, "")
+          .replace(/[?&]$/, "")
+          .replace(/\?&/, "?");
+        return (
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <h3 className="text-sm font-medium text-text-primary mb-3">{t.webuiUrl}</h3>
+            <p className="text-xs text-text-secondary mb-2">{t.webuiUrlHint}</p>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-[family-name:var(--font-mono)] text-xs text-text-primary flex-1 truncate" title={displayUrl}>
+                <a
+                  href={agent.webui_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-cyan hover:underline"
+                >
+                  {displayUrl}
+                </a>
+              </span>
+              <button
+                onClick={() => handleCopy(copyUrl, t.copyUrl)}
+                className="shrink-0 text-accent-cyan hover:text-accent-cyan/80 text-xs px-2 py-1 border border-border rounded"
+              >
+                {t.copy}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Resource usage */}
       <div className="rounded-lg border border-border bg-surface p-4">
         <h3 className="text-sm font-medium mb-3 text-text-primary flex items-center justify-between">
@@ -805,14 +832,14 @@ function OverviewTab({ agent, onRegisterWeChat, onRefresh, isUser }: { agent: Ag
       {showResourceEdit && (
         <ResourceEditDialog
           agentId={agent.id}
-          onClose={() => setShowResourceEdit(false)}
-          onSaved={() => { onRefresh(); }}
+          onClose={handleCloseResourceEdit}
+          onSaved={handleResourceSaved}
         />
       )}
       {showResourceView && (
         <ResourceViewDialog
           agentId={agent.id}
-          onClose={() => setShowResourceView(false)}
+          onClose={handleCloseResourceView}
         />
       )}
     </div>

@@ -1,0 +1,59 @@
+---
+# Admin ingress: strips /admin prefix via rewrite-target
+# Each path has 2 capture groups: (/|$) and (.*)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hermes-admin-ingress
+  namespace: hermes-agent
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /admin/api(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: hermes-admin
+                port:
+                  number: 48082
+          - path: /admin(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: hermes-admin
+                port:
+                  number: 48082
+---
+# WebUI ingress: NO rewrite, paths forwarded as-is
+# This eliminates the capture-group trap entirely.
+# Note: Dynamic agent ingress (hermes-agents-ingress) is managed at runtime
+# by k8s_client._ensure_agents_ingress(). NOT included in kustomization.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hermes-webui-ingress
+  namespace: hermes-agent
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hermes-webui
+                port:
+                  number: 8080

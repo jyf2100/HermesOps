@@ -1,7 +1,7 @@
 """ORM models for Hermes Admin user management."""
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -13,7 +13,7 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(100), default="")
@@ -77,7 +77,7 @@ class AgentSkill(Base):
         Index("ix_agent_skills_tags", "tags", postgresql_using="gin"),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     agent_number = Column(Integer, nullable=False, index=True)
     skill_name = Column(String(64), nullable=False)
     description = Column(String(1024), default="")
@@ -103,7 +103,7 @@ class ProfileTemplate(Base):
     """Reusable profile templates that define config overrides and soul prompts."""
     __tablename__ = "profile_templates"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     name = Column(String(64), unique=True, nullable=False)
     display_name = Column(String(100), default="")
     description = Column(Text, default="")
@@ -122,7 +122,7 @@ class AgentProfile(Base):
         Index("ix_agent_profiles_template_id", "template_id"),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     agent_number = Column(Integer, nullable=False, index=True)
     template_id = Column(Integer, ForeignKey("profile_templates.id", ondelete="SET NULL"), nullable=True)
     profile_name = Column(String(64), nullable=False)
@@ -141,11 +141,12 @@ class ProfileAuditLog(Base):
     """Audit log for profile/template CUD operations."""
     __tablename__ = "profile_audit_log"
     __table_args__ = (
+        CheckConstraint("action IN ('create', 'update', 'delete')", name="ck_audit_action"),
         Index("ix_audit_entity", "entity_type", "entity_id"),
         Index("ix_audit_created", "created_at", postgresql_using="btree"),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     entity_type = Column(String(16), nullable=False)  # 'template' | 'profile'
     entity_id = Column(Integer, nullable=False)
     action = Column(String(16), nullable=False)  # 'create' | 'update' | 'delete'

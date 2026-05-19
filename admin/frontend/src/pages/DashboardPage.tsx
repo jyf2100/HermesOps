@@ -149,7 +149,7 @@ export function DashboardPage() {
         {!isUser && (
           <button
             onClick={() => navigate("/create")}
-            className="h-9 px-4 text-sm rounded-lg bg-accent-pink text-text-primary hover:shadow-[0_0_20px_rgba(255,42,109,0.3)] transition-all"
+            className="h-9 px-4 text-sm rounded-lg bg-accent-pink text-background hover:opacity-90 transition-colors"
           >
             + {t.createAgent}
           </button>

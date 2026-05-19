@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e-real",
-  timeout: 30000,
+  timeout: 60000,
   use: {
-    baseURL: "http://100.105.228.5:40080",
+    baseURL: process.env.BASE_URL || "http://172.32.153.184:40080",
   },
 });

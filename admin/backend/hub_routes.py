@@ -18,7 +18,8 @@ import re
 import tarfile
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from collections.abc import Coroutine
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -64,17 +65,41 @@ async def _verify_hub_auth(request: Request) -> AuthContext:
         x_email_token=request.headers.get("X-Email-Token", ""),
         request=request,
     )
-    # Mirror agent_id onto request.state so downstream code can read it
+    # Store context so GET handlers can check agent scope later
+    request.state.hub_auth = ctx
     if ctx.agent_id is not None:
         request.state.agent_id = ctx.agent_id
     return ctx
 
 
-async def _require_admin_only(ctx: AuthContext = Depends(_verify_hub_auth)) -> None:
-    """Reject non-admin auth modes for mutation endpoints."""
+async def _verify_hub_mutation(
+    request: Request,
+    ctx: AuthContext = Depends(_verify_hub_auth),
+) -> AuthContext:
+    """Auth for mutation endpoints: admin OK, user must own the agent."""
     if not ctx.is_admin:
-        raise HTTPException(status_code=403, detail="Admin-only operation")
+        if ctx.agent_id is None:
+            raise HTTPException(status_code=403, detail="No agent association")
+        try:
+            url_agent_id = int(request.path_params["agent_id"])
+        except (KeyError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid agent_id")
+        if ctx.agent_id != url_agent_id:
+            raise HTTPException(status_code=403, detail="Access denied for this agent")
+    return ctx
 
+
+def _hub_check_agent_scope(request: Request, agent_id: int) -> None:
+    """Verify the authenticated user has access to this agent_id.
+    
+    For GET endpoints that use _verify_hub_auth (not _verify_hub_mutation),
+    this adds the same ownership check that mutation endpoints already have.
+    """
+    ctx: AuthContext | None = getattr(request.state, "hub_auth", None)
+    if ctx is None:
+        return
+    if not ctx.is_admin and ctx.agent_id is not None and ctx.agent_id != agent_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this agent")
 
 # ---------------------------------------------------------------------------
 # K8s client accessor
@@ -82,6 +107,49 @@ async def _require_admin_only(ctx: AuthContext = Depends(_verify_hub_auth)) -> N
 
 def _k8s(request: Request) -> K8sClient:
     return request.app.state.k8s
+
+
+async def _resolve_skill_dir(k8s: K8sClient, pod: str, agent_id: int, skill_name: str) -> str | None:
+    """Find the actual directory for a skill on the pod.
+    Checks DB first for the known path, then falls back to flat SKILLS_ROOT/{name}."""
+    from database import AsyncSessionLocal
+    from db_models import AgentSkill as AgentSkillORM
+    from sqlalchemy import select
+    try:
+        async with AsyncSessionLocal() as session:
+            row = (await session.execute(
+                select(AgentSkillORM.skill_dir).where(
+                    AgentSkillORM.agent_number == agent_id,
+                    AgentSkillORM.skill_name == skill_name,
+                )
+            )).scalar_one_or_none()
+            if row:
+                return row
+    except Exception:
+        logger.warning("DB lookup failed for skill_dir (agent=%d, skill=%s)", agent_id, skill_name, exc_info=True)
+    # Fallback: flat path
+    fallback = f"{SKILLS_ROOT}/{skill_name}"
+    entries = await k8s.list_dir(pod, fallback)
+    return fallback if entries else None
+
+
+def _validate_skill_path(path: str, skill_name: str) -> str:
+    """Validate a skill directory path is safe for rm -rf.
+
+    Must be under SKILLS_ROOT, no traversal, and match expected skill name.
+    """
+    if not path.startswith(SKILLS_ROOT):
+        raise ValueError(f"Skill path {path!r} is outside {SKILLS_ROOT}")
+    rel = path[len(SKILLS_ROOT):].lstrip("/")
+    if not rel:
+        raise ValueError("Refusing to delete SKILLS_ROOT itself")
+    if ".." in rel.split("/"):
+        raise ValueError(f"Path traversal in skill path: {path}")
+    # The last path segment should match the skill name (or be a parent dir containing it)
+    segments = rel.split("/")
+    if skill_name not in segments:
+        raise ValueError(f"Path {path!r} does not match skill {skill_name!r}")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +176,7 @@ _pod_locks: dict[str, asyncio.Lock] = {}
 
 
 def _get_pod_lock(pod_name: str) -> asyncio.Lock:
-    if pod_name not in _pod_locks:
-        _pod_locks[pod_name] = asyncio.Lock()
-    return _pod_locks[pod_name]
+    return _pod_locks.setdefault(pod_name, asyncio.Lock())
 
 
 # ---------------------------------------------------------------------------
@@ -144,16 +210,17 @@ def _purge_expired_tasks() -> None:
 
 
 async def _create_task(agent_id: int, prefix: str = "install") -> HubTask:
-    _purge_expired_tasks()
     tid = f"{prefix}-{os.urandom(6).hex()}"
     task = HubTask(task_id=tid, agent_id=agent_id, status="pending", phase="Initializing")
     async with _tasks_lock:
+        _purge_expired_tasks()
         _tasks[tid] = task
     return task
 
 
 async def _get_task(task_id: str) -> Optional[HubTask]:
     async with _tasks_lock:
+        _purge_expired_tasks()
         task = _tasks.get(task_id)
         if task and task.is_expired():
             del _tasks[task_id]
@@ -237,10 +304,11 @@ async def _tar_write_to_pod(k8s: K8sClient, pod: str, skill_name: str, files: di
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         for fname, content in files.items():
             safe_fname = _safe_rel_path(fname)
+            raw = content if isinstance(content, bytes) else content.encode("utf-8")
             info = tarfile.TarInfo(name=f"{skill_name}/{safe_fname}")
-            info.size = len(content)
+            info.size = len(raw)
             info.mtime = time.time()
-            tar.addfile(info, io.BytesIO(content))
+            tar.addfile(info, io.BytesIO(raw))
             safe_files += 1
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     # Split into chunks to avoid shell argument length limits (~128KB)
@@ -392,7 +460,7 @@ async def fetch_skill(
     if bundle is None:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found in any source")
 
-    scan_result = _scan_bundle_in_tmpdir(bundle)
+    scan_result = await asyncio.to_thread(_scan_bundle_in_tmpdir, bundle)
     scan_info = {"verdict": scan_result.get("verdict", "unknown"),
                  "findings_count": len(scan_result.get("findings", [])),
                  "summary": scan_result.get("summary", "")}
@@ -464,16 +532,34 @@ async def list_installed_skills(
     agent_id: int,
     request: Request,
     _auth: str = Depends(_verify_hub_auth),
+    refresh: bool = False,
 ):
-    """List skills installed on agent pod. Merges scan results with lock.json."""
+    """List skills for an agent. Serves from DB by default (fast).
+    Pass ?refresh=true to force a live pod scan and update the DB cache."""
+    _hub_check_agent_scope(request, agent_id)
+    from database import AsyncSessionLocal
+    from db_models import AgentSkill as AgentSkillORM
+    from sqlalchemy import select
+
+    # Fast path: serve from DB unless refresh requested
+    if not refresh:
+        async with AsyncSessionLocal() as session:
+            rows = (await session.execute(
+                select(AgentSkillORM).where(AgentSkillORM.agent_number == agent_id)
+            )).scalars().all()
+            if rows:
+                return {"ok": True, "running": True, "skills": [
+                    {"name": r.skill_name, "description": r.description, "version": r.version,
+                     "tags": r.tags, "source": "db-cache", "trust_level": None,
+                     "installed_at": None, "content_hash": r.content_hash, "orphan": False}
+                    for r in rows]}
+
+    # Slow path: live scan from pod, then upsert DB
     k8s = _k8s(request)
     try:
         pod = await _resolve_pod(k8s, agent_id)
     except HTTPException:
-        # Pod not running — fall back to DB cache
-        from database import AsyncSessionLocal
-        from db_models import AgentSkill as AgentSkillORM
-        from sqlalchemy import select
+        # Pod not running — return whatever DB has (possibly empty)
         async with AsyncSessionLocal() as session:
             rows = (await session.execute(
                 select(AgentSkillORM).where(AgentSkillORM.agent_number == agent_id)
@@ -484,7 +570,6 @@ async def list_installed_skills(
                  "installed_at": None, "content_hash": r.content_hash, "orphan": False}
                 for r in rows]}
 
-    # Live scan
     from skill_scanner import scan_skills
     scanned = await scan_skills(k8s, pod) or []
     lock_data = await _read_lock_json(k8s, pod)
@@ -504,7 +589,6 @@ async def list_installed_skills(
             "content_hash": s.get("content_hash", ""), "orphan": False,
         })
 
-    # Add orphaned skills from lock.json that weren't found by scan
     for name, entry in lock_skills.items():
         if name not in scanned_names:
             skills.append({
@@ -515,6 +599,34 @@ async def list_installed_skills(
                 "content_hash": entry.get("content_hash", ""), "orphan": True,
             })
 
+    # Upsert scanned skills into DB for future fast reads
+    try:
+        async with AsyncSessionLocal() as session:
+            existing = {r.skill_name: r for r in (
+                await session.execute(
+                    select(AgentSkillORM).where(AgentSkillORM.agent_number == agent_id)
+                )).scalars().all()}
+            for s in skills:
+                if s["orphan"]:
+                    continue
+                row = existing.get(s["name"])
+                if row:
+                    row.description = s["description"]
+                    row.version = s["version"]
+                    row.tags = s["tags"]
+                    row.content_hash = s["content_hash"]
+                    row.skill_dir = s.get("skill_dir", "")
+                else:
+                    session.add(AgentSkillORM(
+                        agent_number=agent_id, skill_name=s["name"],
+                        description=s["description"], version=s["version"],
+                        tags=s["tags"], content_hash=s["content_hash"],
+                        skill_dir=s.get("skill_dir", ""),
+                    ))
+            await session.commit()
+    except Exception:
+        logger.warning("Failed to upsert skill cache for agent %s", agent_id, exc_info=True)
+
     return {"ok": True, "running": True, "skills": skills}
 
 
@@ -522,8 +634,7 @@ async def list_installed_skills(
 async def install_skill(
     agent_id: int,
     request: Request,
-    _auth: str = Depends(_verify_hub_auth),
-    _admin: None = Depends(_require_admin_only),
+    _auth: AuthContext = Depends(_verify_hub_mutation),
 ):
     """Install a skill from the hub onto an agent pod.
 
@@ -539,6 +650,8 @@ async def install_skill(
 
     if not identifier:
         raise HTTPException(status_code=400, detail="Missing 'identifier'")
+    if len(identifier) > 512:
+        raise HTTPException(status_code=400, detail="Identifier too long (max 512 chars)")
 
     k8s = _k8s(request)
     pod = await _resolve_pod(k8s, agent_id)
@@ -668,8 +781,7 @@ async def uninstall_skill(
     agent_id: int,
     skill_name: str,
     request: Request,
-    _auth: str = Depends(_verify_hub_auth),
-    _admin: None = Depends(_require_admin_only),
+    _auth: AuthContext = Depends(_verify_hub_mutation),
 ):
     """Uninstall a skill from an agent pod."""
     skill_name = _validate_skill_name(skill_name)
@@ -681,9 +793,11 @@ async def uninstall_skill(
         lock_skills = lock_data.get("skills", [])
         entry = next((s for s in lock_skills if s["name"] == skill_name), None)
 
-        # Remove files
-        skill_path = f"{SKILLS_ROOT}/{skill_name}"
-        await k8s.run_command(pod, ["rm", "-rf", skill_path])
+        # Remove files — resolve actual path from DB
+        skill_dir = await _resolve_skill_dir(k8s, pod, agent_id, skill_name)
+        if skill_dir:
+            _validate_skill_path(skill_dir, skill_name)
+            await k8s.run_command(pod, ["rm", "-rf", skill_dir])
 
         # Update lock.json regardless (idempotent)
         lock_skills = [s for s in lock_skills if s["name"] != skill_name]
@@ -699,12 +813,15 @@ async def uninstall_skill(
 async def check_updates(
     agent_id: int,
     request: Request,
-    _auth: str = Depends(_verify_hub_auth),
-    _admin: None = Depends(_require_admin_only),
+    _auth: AuthContext = Depends(_verify_hub_mutation),
 ):
     """Check for skill updates by comparing installed hashes with upstream."""
     body = await request.json() if await request.body() else {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
     target_name = body.get("name")
+    if target_name is not None and (not isinstance(target_name, str) or len(target_name) > 128):
+        raise HTTPException(status_code=400, detail="Invalid 'name' parameter")
 
     k8s = _k8s(request)
     pod = await _resolve_pod(k8s, agent_id)
@@ -753,8 +870,7 @@ async def update_skill(
     agent_id: int,
     skill_name: str,
     request: Request,
-    _auth: str = Depends(_verify_hub_auth),
-    _admin: None = Depends(_require_admin_only),
+    _auth: AuthContext = Depends(_verify_hub_mutation),
 ):
     """Update a skill (uninstall old + install new, under single pod lock)."""
     skill_name = _validate_skill_name(skill_name)
@@ -806,8 +922,11 @@ async def update_skill(
             task.progress = 0.5
 
             async with _get_pod_lock(pod):
-                # Remove old
-                await k8s_ref.run_command(pod, ["rm", "-rf", f"{SKILLS_ROOT}/{skill_name}"])
+                # Remove old — resolve actual path from DB
+                old_dir = await _resolve_skill_dir(k8s_ref, pod, agent_id, skill_name)
+                if old_dir:
+                    _validate_skill_path(old_dir, skill_name)
+                    await k8s_ref.run_command(pod, ["rm", "-rf", old_dir])
                 await k8s_ref.run_command(pod, ["mkdir", "-p", SKILLS_ROOT])
 
                 # Write new
@@ -851,12 +970,18 @@ async def audit_skill(
     _auth: str = Depends(_verify_hub_auth),
 ):
     """Run security audit on an installed skill."""
+    _hub_check_agent_scope(request, agent_id)
     skill_name = _validate_skill_name(skill_name)
     k8s = _k8s(request)
     pod = await _resolve_pod(k8s, agent_id)
 
+    # Resolve skill directory from DB first, fallback to flat path
+    skill_dir = await _resolve_skill_dir(k8s, pod, agent_id, skill_name)
+    if skill_dir is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found on pod")
+
     # Verify skill exists
-    entries = await k8s.list_dir(pod, f"{SKILLS_ROOT}/{skill_name}")
+    entries = await k8s.list_dir(pod, skill_dir)
     if not entries:
         raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found on pod")
 
@@ -871,12 +996,14 @@ async def audit_skill(
         context = "admin-cache"
     else:
         # Read files from pod and scan
-        skill_path = f"{SKILLS_ROOT}/{skill_name}"
         files: dict[str, bytes] = {}
         for entry in entries:
-            if entry.get("type") == "file":
+            if entry.get("type") == "f":
                 fname = entry["name"]
-                raw, _ = await k8s.read_file_from_pod(pod, f"{skill_path}/{fname}")
+                raw, err = await k8s.read_file_from_pod(pod, f"{skill_dir}/{fname}")
+                if err or not raw:
+                    logger.warning("Skipping %s in audit: %s", fname, err or "empty")
+                    continue
                 files[fname] = raw
 
         if not files:
@@ -908,9 +1035,11 @@ async def audit_skill(
 async def get_task_status(
     agent_id: int,
     task_id: str,
+    request: Request,
     _auth: str = Depends(_verify_hub_auth),
 ):
     """Poll async task status."""
+    _hub_check_agent_scope(request, agent_id)
     task = await _get_task(task_id)
     if task is None or task.agent_id != agent_id:
         raise HTTPException(status_code=404, detail="Task not found or expired")
@@ -955,7 +1084,7 @@ def _fetch_from_sources(identifier: str) -> Optional[SkillBundle]:
 _bg_tasks: set[asyncio.Task] = set()
 
 
-def _spawn_background(coro) -> asyncio.Task:
+def _spawn_background(coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
     """Create a background task with proper reference tracking."""
     t = asyncio.create_task(coro)
     _bg_tasks.add(t)

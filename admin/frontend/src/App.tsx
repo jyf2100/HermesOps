@@ -8,11 +8,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
 import { FileBrowserPage } from "./pages/FileBrowserPage";
 import { TemplateListPage } from "./pages/TemplateListPage";
-import { SwarmGuard } from "./components/SwarmGuard";
-import { SwarmOverviewPage } from "./pages/swarm/SwarmOverviewPage";
-import { CrewListPage } from "./pages/swarm/CrewListPage";
-import { CrewEditPage } from "./pages/swarm/CrewEditPage";
-import { ComingSoonPage } from "./pages/swarm/ComingSoonPage";
 // Orchestrator — pages created by other tasks
 import { OrchestratorGuard } from "./components/OrchestratorGuard";
 import { OrchestratorOverviewPage } from "./pages/orchestrator/OrchestratorOverviewPage";
@@ -41,20 +36,6 @@ function App() {
           <Route path="/files" element={<FileBrowserPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/templates" element={<TemplateListPage />} />
-          <Route
-            element={
-              <SwarmGuard>
-                <Outlet />
-              </SwarmGuard>
-            }
-          >
-            <Route path="/swarm" element={<SwarmOverviewPage />} />
-            <Route path="/swarm/tasks" element={<ComingSoonPage title="Tasks" />} />
-            <Route path="/swarm/knowledge" element={<ComingSoonPage title="Knowledge" />} />
-            <Route path="/swarm/crews" element={<CrewListPage />} />
-            <Route path="/swarm/crews/new" element={<CrewEditPage />} />
-            <Route path="/swarm/crews/:id/edit" element={<CrewEditPage />} />
-          </Route>
           {/* Orchestrator routes */}
           <Route element={<OrchestratorGuard />}>
             <Route path="/orchestrator" element={<OrchestratorOverviewPage />} />

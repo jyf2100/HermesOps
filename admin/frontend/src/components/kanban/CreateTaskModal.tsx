@@ -5,6 +5,7 @@ import { adminFetch } from "../../lib/admin-api";
 import { useI18n } from "../../hooks/useI18n";
 import { ModalOverlay } from "../shared/ModalOverlay";
 import { AgentProfileData } from "../../types/profile";
+import type { KanbanTask } from "./kanban-types";
 
 interface SkillEntry {
   name: string;
@@ -28,9 +29,9 @@ export function CreateTaskModal({
   onCreated,
 }: CreateTaskModalProps) {
   const createTask = useKanbanBoard((s) => s.createTask);
-  const boardTasks = useKanbanBoard((s) => s.tasks);
   const assignees = useKanbanBoard((s) => s.assignees);
   const fetchAssignees = useKanbanBoard((s) => s.fetchAssignees);
+  const [snapshotTasks, setSnapshotTasks] = useState<KanbanTask[]>([]);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [priority, setPriority] = useState(2);
@@ -53,6 +54,8 @@ export function CreateTaskModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    // Snapshot current board tasks for parent selection (avoids polling re-renders)
+    setSnapshotTasks(useKanbanBoard.getState().tasks);
     setSkillsLoading(true);
     adminFetch<SkillEntry[]>(`/agents/${agentId}/skills`)
       .then((skills) => {
@@ -509,7 +512,7 @@ export function CreateTaskModal({
                 {selectedParents.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-2">
                     {selectedParents.map((id) => {
-                      const task = boardTasks.find((bt) => bt.id === id);
+                      const task = snapshotTasks.find((bt) => bt.id === id);
                       return (
                         <span
                           key={id}
@@ -529,7 +532,7 @@ export function CreateTaskModal({
                     })}
                   </div>
                 )}
-                {boardTasks.length > 0 && (
+                {snapshotTasks.length > 0 && (
                   <>
                     <input
                       type="text"
@@ -539,7 +542,7 @@ export function CreateTaskModal({
                       className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-xs text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan mb-1.5"
                     />
                     <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
-                      {boardTasks
+                      {snapshotTasks
                         .filter((bt) => bt.status !== "done" && bt.status !== "archived")
                         .filter((bt) =>
                           !parentsFilter.trim() ||

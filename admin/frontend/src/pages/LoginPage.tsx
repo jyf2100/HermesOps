@@ -99,7 +99,7 @@ export function LoginPage() {
       />
 
       <div className="glass-heavy rounded-xl border border-border p-10 max-w-sm w-full mx-4 relative z-10">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-[0.15em] text-text-primary glow-pink-text text-center mb-1">
+        <h1 className="text-3xl font-semibold tracking-[0.06em] text-text-primary text-center mb-1">
           NEWHERMES
         </h1>
         <p className="font-[family-name:var(--font-body)] text-text-secondary text-sm text-center mb-6">
@@ -163,7 +163,7 @@ export function LoginPage() {
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
                     placeholder={isAdmin ? t.loginKeyPlaceholder : t.apiKeyPlaceholder}
-                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(5,217,232,0.15)]"
+                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(128,128,128,0.15)]"
                     autoFocus
                     disabled={loading}
                   />
@@ -196,7 +196,7 @@ export function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={t.emailPlaceholder}
-                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(5,217,232,0.15)]"
+                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(128,128,128,0.15)]"
                     autoFocus
                     disabled={loading}
                   />
@@ -218,7 +218,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t.passwordPlaceholder}
-                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(5,217,232,0.15)]"
+                    className="w-full h-11 px-4 pl-10 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(128,128,128,0.15)]"
                     disabled={loading}
                   />
                 </div>
@@ -234,7 +234,7 @@ export function LoginPage() {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder={t.displayNamePlaceholder}
-                    className="w-full h-11 px-4 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(5,217,232,0.15)]"
+                    className="w-full h-11 px-4 text-sm bg-background border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-cyan focus:shadow-[0_0_0_2px_rgba(128,128,128,0.15)]"
                     disabled={loading}
                   />
                 </div>
@@ -264,10 +264,10 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={loading || (isEmail ? !email.trim() || !password.trim() : !key.trim())}
-            className={`w-full h-11 text-sm font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all ${
+            className={`w-full h-11 text-sm font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
               isAdmin
-                ? "bg-accent-pink text-white hover:shadow-[0_0_20px_rgba(255,42,109,0.3)]"
-                : "bg-accent-cyan text-background hover:shadow-[0_0_20px_rgba(5,217,232,0.3)]"
+                ? "bg-accent-pink text-background hover:opacity-90"
+                : "bg-accent-cyan text-background hover:opacity-90"
             }`}
           >
             {loading ? t.loginLoading : (showRegister ? t.registerButton : t.loginButton)}

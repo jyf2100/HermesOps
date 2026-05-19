@@ -78,7 +78,10 @@ async function goToDashboard(page: import("@playwright/test").Page) {
     route.fulfill({ json: mockClusterStatus })
   );
   await page.route("**/admin/api/agents/3", (route) =>
-    route.fulfill({ json: { ...mockAgentDetail, id: 3, url_path: "/agent3" } })
+    route.fulfill({ json: { ...mockAgentDetail, id: 3, url_path: "/agent3", webui_url: "http://agent3.172-32-153-184.nip.io:40080" } })
+  );
+  await page.route("**/admin/api/agents/1", (route) =>
+    route.fulfill({ json: { ...mockAgentDetail, id: 1, url_path: "/agent1", webui_url: "http://agent1.172-32-153-184.nip.io:40080" } })
   );
   await page.route("**/admin/api/user/me", (route) =>
     route.fulfill({
@@ -115,14 +118,14 @@ test.describe("Ops Panel Sidebar — user with bound agent", () => {
     await expect(sidebar.getByText("Agent 控制台")).toBeVisible();
   });
 
-  test("Agent Console link href contains /agent3/ops/", async ({ page }) => {
+  test("Agent Console link href contains nip.io domain", async ({ page }) => {
     await loginAsUserEn(page, "3");
     await goToDashboard(page);
 
     const sidebar = desktopSidebar(page);
     const opsLink = sidebar.locator("a[target='_blank']");
     const href = await opsLink.getAttribute("href");
-    expect(href).toContain("/agent3/ops/");
+    expect(href).toContain("agent3.172-32-153-184.nip.io:40080");
   });
 
   test("Agent Console link opens in new tab", async ({ page }) => {
@@ -161,8 +164,8 @@ test.describe("Ops Panel Sidebar — user with bound agent", () => {
     const sidebar = desktopSidebar(page);
     const opsLink = sidebar.locator("a[target='_blank']");
     const href = await opsLink.getAttribute("href");
-    expect(href).toContain("/agent1/ops/");
-    expect(href).not.toContain("/agent3/ops/");
+    expect(href).toContain("agent1.172-32-153-184.nip.io:40080");
+    expect(href).not.toContain("agent3.");
   });
 });
 
@@ -242,6 +245,9 @@ test.describe("Ops Panel Sidebar — navigation order", () => {
     await goToDashboard(page);
 
     const sidebar = desktopSidebar(page);
+    // Wait for async webuiUrl to load and Agent Console to appear
+    await expect(sidebar.getByText("Agent Console")).toBeVisible();
+
     const nav = sidebar.locator("nav[aria-label='Main navigation']");
     // All nav items are rendered as <a> tags (internal <Link> or external <a>)
     const navLinks = nav.locator("a");

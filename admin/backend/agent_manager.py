@@ -54,6 +54,24 @@ class AgentManager:
             return "***"
         return f"{key[:3]}***{key[-3:]}"
 
+    @staticmethod
+    def _build_webui_url(agent_id: int) -> str:
+        nip = os.environ.get('CLUSTER_IP', '172.32.153.184').replace('.', '-')
+        port = os.environ.get('INGRESS_PORT', '')
+        suffix = f":{port}" if port and port != "80" else ""
+        return f"http://agent{agent_id}.{nip}.nip.io{suffix}"
+
+    async def _resolve_webui_url(self, agent_id: int) -> str | None:
+        gw_name = deployment_name(agent_id)
+        deploy = await self.k8s.get_deployment(gw_name)
+        if deploy is None:
+            return None
+        base_url = self._build_webui_url(agent_id)
+        api_key = await self._get_agent_api_key(agent_id)
+        if api_key:
+            return f"{base_url}/?token={api_key}"
+        return base_url
+
     async def _get_agent_api_key(self, agent_num: int) -> str | None:
         """Read the API key from the K8s secret for an agent."""
         name = deployment_name(agent_num)
@@ -250,6 +268,7 @@ class AgentManager:
             restart_count=restart_count,
             age_human=age_human,
             ingress_path=f"/agent{agent_id}",
+            webui_url=await self._resolve_webui_url(agent_id),
         )
 
     # --- Create Agent ---
@@ -267,10 +286,15 @@ class AgentManager:
 
         # Pre-flight cleanup: remove orphaned resources from previous failed attempts
         logger.info("Pre-flight cleanup for agent %d: checking orphaned resources", agent_num)
+        webui_name = f"hermes-webui-{agent_num}"
         for cleanup_fn, cleanup_label in [
             (lambda: self.k8s.delete_secret(secret_name), "secret"),
             (lambda: self.k8s.delete_deployment(name), "deployment"),
             (lambda: self.k8s.delete_service(name), "service"),
+            (lambda: self.k8s.delete_webui_deployment(webui_name), "webui-deployment"),
+            (lambda: self.k8s.delete_webui_service(webui_name), "webui-service"),
+            (lambda: self.k8s.delete_webui_ingress(webui_name), "webui-ingress"),
+            (lambda: self.k8s.delete_webui_ingress(f"{name}-nip"), "nip-ingress"),
         ]:
             try:
                 await cleanup_fn()
@@ -336,7 +360,7 @@ class AgentManager:
         step = CreateStepStatus(step=3, label="Creating Deployment", status="running")
         steps.append(step)
         try:
-            deployment_body = self.tpl.render_deployment(
+            deployment_body = self.tpl.render_webui_deployment(
                 agent_number=agent_num, secret_name=secret_name, resources=req.resources,
                 namespace=self.namespace, display_name=req.display_name,
             )
@@ -374,10 +398,7 @@ class AgentManager:
             except Exception as e:
                 logger.debug("Stale ingress cleanup: %s", e)
             await self.k8s.add_ingress_path(
-                path=f"/agent{agent_num}", service_name=name, service_port=8642,
-            )
-            await self.k8s.add_ingress_path(
-                path=f"/agent{agent_num}/ops", service_name=name, service_port=6060,
+                path=f"/agent{agent_num}", service_name=name, service_port=6060,
             )
             step.status = "done"
         except Exception as e:
@@ -389,8 +410,21 @@ class AgentManager:
             await self.k8s.delete_secret(secret_name)
             return CreateAgentResponse(agent_number=agent_num, name=name, created=False, steps=steps)
 
-        # Step 5: Wait for ready (quick check, max 30s to avoid nginx 504)
-        step = CreateStepStatus(step=6, label="Waiting for ready", status="running")
+        # Step 5: Create nip.io Ingress for direct webui access (non-fatal)
+        step_nip = CreateStepStatus(step=6, label="Creating nip.io Ingress", status="running")
+        steps.append(step_nip)
+        try:
+            cluster_ip = os.environ.get("CLUSTER_IP", "172.32.153.184")
+            nip_ing = self.tpl.render_nip_ingress(agent_num, cluster_ip=cluster_ip)
+            await self.k8s.create_webui_ingress(nip_ing)
+            step_nip.status = "done"
+        except Exception as e:
+            step_nip.status = "failed"
+            step_nip.message = str(e)
+            logger.warning("nip.io Ingress creation failed for agent %s: %s", agent_num, e)
+
+        # Step 6: Wait for ready (quick check, max 30s to avoid nginx 504)
+        step = CreateStepStatus(step=7, label="Waiting for ready", status="running")
         steps.append(step)
         try:
             ready = await self.k8s.wait_deployment_ready(name, timeout_seconds=30, poll_interval_seconds=5)
@@ -477,6 +511,18 @@ class AgentManager:
             await self.k8s.remove_ingress_path(f"/agent{agent_id}")
         except Exception as e:
             logger.warning("Failed to remove ingress path for agent %s: %s", agent_id, e)
+        # Clean up standalone WebUI resources (best-effort)
+        webui_name = f"hermes-webui-{agent_id}"
+        for cleanup_fn, resource in [
+            (self.k8s.delete_webui_ingress, webui_name),
+            (self.k8s.delete_webui_service, webui_name),
+            (self.k8s.delete_webui_deployment, webui_name),
+            (self.k8s.delete_webui_ingress, f"{name}-nip"),
+        ]:
+            try:
+                await cleanup_fn(resource)
+            except Exception as e:
+                logger.warning("Failed to delete resource %s: %s", resource, e)
         try:
             await self.k8s.delete_deployment(name)
         except Exception as e:

@@ -13,6 +13,14 @@ import { getApiError } from "../../lib/utils";
 type SubTab = "installed" | "browse";
 type AuditModal = { skill: string; result: HubAuditResult } | null;
 
+interface AutoInstallTask {
+  taskId: string;
+  skillName: string;
+  status: "pending" | "running" | "completed" | "failed";
+  phase: string;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // AgentSkillsTab
 // ---------------------------------------------------------------------------
@@ -76,6 +84,8 @@ function SubTabBtn({ active, onClick, label }: { active: boolean; onClick: () =>
 
 function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: boolean }) {
   const { t } = useI18n();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [skills, setSkills] = useState<HubInstalledSkill[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(true);
@@ -83,6 +93,13 @@ function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: b
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const [taskPhase, setTaskPhase] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval>>(null);
+
+  // Auto-install progress
+  const [autoInstallTasks, setAutoInstallTasks] = useState<AutoInstallTask[]>([]);
+  const [autoInstallVisible, setAutoInstallVisible] = useState(false);
+  const autoInstallTasksRef = useRef<AutoInstallTask[]>([]);
+  const autoPollRef = useRef<ReturnType<typeof setInterval>>(null);
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const load = useCallback(async () => {
     try {
@@ -105,6 +122,84 @@ function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: b
     return () => window.removeEventListener("hub-skill-changed", handler);
   }, [load]);
 
+  // Listen for hub-auto-install custom events (from create_agent flow)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ taskIds: string[]; skills: string[] }>).detail;
+      if (!detail?.taskIds?.length) return;
+      const tasks: AutoInstallTask[] = detail.taskIds.map((id, i) => ({
+        taskId: id,
+        skillName: detail.skills?.[i] ?? `Skill ${i + 1}`,
+        status: "pending",
+        phase: tRef.current.skillsInstalling,
+      }));
+      setAutoInstallTasks(tasks);
+      setAutoInstallVisible(true);
+    };
+    window.addEventListener("hub-auto-install", handler);
+    return () => window.removeEventListener("hub-auto-install", handler);
+  }, []);
+
+  // Keep ref in sync with autoInstallTasks state (for use inside polling closure)
+  useEffect(() => {
+    autoInstallTasksRef.current = autoInstallTasks;
+  }, [autoInstallTasks]);
+
+  // Auto-install polling — uses ref to read tasks so autoInstallTasks can be
+  // removed from the dependency array, preventing the interval-rebuild loop.
+  useEffect(() => {
+    if (!autoInstallVisible) return;
+
+    autoPollRef.current = setInterval(async () => {
+      const tasks = autoInstallTasksRef.current;
+      if (tasks.length === 0) return;
+
+      const hasActive = tasks.some((t) => t.status === "pending" || t.status === "running");
+      if (!hasActive) return;
+
+      const updated = [...tasks];
+      let changed = false;
+
+      for (let i = 0; i < updated.length; i++) {
+        const task = updated[i];
+        if (task.status === "completed" || task.status === "failed") continue;
+        try {
+          const res = await adminApi.hubTaskStatus(agentId, task.taskId);
+          const newStatus = res.status === "completed" ? "completed" : res.status === "failed" ? "failed" : "running";
+          updated[i] = {
+            ...task,
+            status: newStatus,
+            phase: res.phase || res.status,
+            error: res.error,
+          };
+          changed = true;
+        } catch {
+          updated[i] = { ...task, status: "failed", phase: tRef.current.skillsFailed, error: tRef.current.errorGeneric };
+          showToast("Failed to check task status", "error");
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        autoInstallTasksRef.current = updated;
+        setAutoInstallTasks(updated);
+
+        const allDone = updated.every((t) => t.status === "completed" || t.status === "failed");
+        if (allDone) {
+          clearInterval(autoPollRef.current!);
+          await load();
+          // Auto-hide panel after 3 seconds
+          autoHideTimerRef.current = setTimeout(() => setAutoInstallVisible(false), 3000);
+        }
+      }
+    }, 1500);
+
+    return () => {
+      if (autoPollRef.current) clearInterval(autoPollRef.current);
+      if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    };
+  }, [autoInstallVisible, agentId, load]);
+
   // Task polling
   useEffect(() => {
     if (!activeTask) {
@@ -117,18 +212,19 @@ function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: b
         setTaskPhase(task.phase || task.status);
         if (task.status === "completed") {
           setActiveTask(null);
-          showToast(t.skillsCompleted);
+          showToast(tRef.current.skillsCompleted);
           await load();
         } else if (task.status === "failed") {
           setActiveTask(null);
-          showToast(task.error || t.skillsFailed, "error");
+          showToast(task.error || tRef.current.skillsFailed, "error");
         }
       } catch {
         setActiveTask(null);
+        showToast("Failed to check task status", "error");
       }
     }, 1500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [activeTask, agentId, load, t]);
+  }, [activeTask, agentId, load]);
 
   async function handleUninstall(name: string) {
     if (!window.confirm(t.skillsUninstallConfirm.replace("{name}", name))) return;
@@ -206,6 +302,11 @@ function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: b
         </div>
       )}
 
+      {/* Auto-install progress panel */}
+      {autoInstallVisible && autoInstallTasks.length > 0 && (
+        <AutoInstallPanel tasks={autoInstallTasks} t={t} onDismiss={() => setAutoInstallVisible(false)} />
+      )}
+
       {/* Skills list */}
       {skills.length === 0 ? (
         <div className="rounded-lg border border-border border-dashed bg-surface/50 p-8 text-center">
@@ -230,6 +331,102 @@ function InstalledSubTab({ agentId, isRunning }: { agentId: number; isRunning: b
       {/* Audit modal */}
       {auditModal && (
         <AuditDialog result={auditModal} onClose={() => setAuditModal(null)} t={t} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AutoInstallPanel
+// ---------------------------------------------------------------------------
+
+interface AutoInstallPanelProps {
+  tasks: AutoInstallTask[];
+  t: Translations;
+  onDismiss: () => void;
+}
+
+function AutoInstallPanel({ tasks, t, onDismiss }: AutoInstallPanelProps) {
+  const done = tasks.filter((t) => t.status === "completed" || t.status === "failed").length;
+  const total = tasks.length;
+  const failed = tasks.filter((t) => t.status === "failed").length;
+  const allDone = done === total;
+
+  return (
+    <div className="rounded-lg border border-accent-cyan/30 bg-accent-cyan/5 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-accent-cyan/20">
+        <div className="flex items-center gap-2 text-xs text-accent-cyan font-medium">
+          {!allDone && (
+            <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+          {allDone && (
+            <svg className="h-3.5 w-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          <span>{t.skillsAutoInstall}</span>
+          <span className="text-text-secondary">
+            ({t.skillsAutoInstallProgress.replace("{done}", String(done)).replace("{total}", String(total))})
+          </span>
+        </div>
+        {allDone && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-text-secondary hover:text-text-primary text-xs transition-colors"
+            aria-label={t.close}
+          >
+            &times;
+          </button>
+        )}
+      </div>
+
+      {/* Task list */}
+      <div className="divide-y divide-border/50">
+        {tasks.map((task) => (
+          <div key={task.taskId} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+            {task.status === "completed" && (
+              <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {task.status === "failed" && (
+              <svg className="h-3.5 w-3.5 shrink-0 text-accent-pink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            {(task.status === "pending" || task.status === "running") && (
+              <svg className="h-3.5 w-3.5 shrink-0 animate-spin text-accent-cyan" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            )}
+            <span className="font-mono text-text-primary truncate">{task.skillName}</span>
+            {task.status === "failed" && task.error && (
+              <span className="text-accent-pink truncate ml-auto max-w-[50%]">{task.error}</span>
+            )}
+            {(task.status === "pending" || task.status === "running") && (
+              <span className="text-text-secondary truncate ml-auto">{task.phase}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Footer summary */}
+      {allDone && (
+        <div className="px-3 py-1.5 border-t border-accent-cyan/20 text-xs">
+          {failed === 0 ? (
+            <span className="text-green-400">{t.skillsAutoInstallComplete}</span>
+          ) : (
+            <span className="text-accent-pink">
+              {t.skillsAutoInstallComplete} ({t.skillsAutoInstallPartial.replace("{failed}", String(failed))})
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -341,6 +538,8 @@ function TrustBadge({ level, t }: { level: string; t: Translations }) {
 
 function BrowseSubTab({ agentId, isRunning }: { agentId: number; isRunning: boolean }) {
   const { t } = useI18n();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [results, setResults] = useState<HubSkillMeta[]>([]);
@@ -389,18 +588,19 @@ function BrowseSubTab({ agentId, isRunning }: { agentId: number; isRunning: bool
         setTaskPhase(task.phase || task.status);
         if (task.status === "completed") {
           setActiveTask(null);
-          showToast(t.skillsCompleted);
+          showToast(tRef.current.skillsCompleted);
           window.dispatchEvent(new CustomEvent("hub-skill-changed"));
         } else if (task.status === "failed") {
           setActiveTask(null);
-          showToast(task.error || t.skillsFailed, "error");
+          showToast(task.error || tRef.current.skillsFailed, "error");
         }
       } catch {
         setActiveTask(null);
+        showToast("Failed to check task status", "error");
       }
     }, 1500);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [activeTask, agentId, t]);
+  }, [activeTask, agentId]);
 
   async function handleInstall(meta: HubSkillMeta) {
     if (!isRunning) {

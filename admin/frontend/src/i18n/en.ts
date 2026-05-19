@@ -304,8 +304,14 @@ export const en: Translations = {
   deployStepSecret: "Creating Secret",
   deployStepInitData: "Init Data",
   deployStepCreateDeployment: "Create Deployment",
+  deployStepCreateService: "Create Service",
   deployStepUpdateIngress: "Update Ingress",
+  deployStepNipIngress: "Create nip.io Ingress",
   deployStepWaitReady: "Wait Ready",
+
+  // WebUI
+  webuiUrl: "WebUI URL",
+  webuiUrlHint: "Open this URL in a browser to access the Agent's Web interface",
 
   // Misc
   envVarCount: "{n} variable(s)",

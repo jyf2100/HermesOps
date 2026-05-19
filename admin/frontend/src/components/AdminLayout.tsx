@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Outlet, Navigate, useLocation, Link, NavLink } from "react-router-dom";
 import { useI18n } from "../hooks/useI18n";
+import { useTheme } from "../hooks/useTheme";
 import { getAuthMode, adminApi } from "../lib/admin-api";
 import { AdminApiError } from "../lib/admin-api";
 
@@ -198,6 +199,12 @@ function IconPlus({ className }: { className?: string }) {
   );
 }
 
+function LogoHermes({ className }: { className?: string }) {
+  return (
+    <img src="/admin/logo.jpg" alt="NewHermes" className={className} />
+  );
+}
+
 /* ── Navigation items ── */
 
 interface NavItem {
@@ -211,6 +218,7 @@ interface NavItem {
 
 export function AdminLayout() {
   const { t, lang, setLang } = useI18n();
+  const { theme, cycleTheme } = useTheme();
   const location = useLocation();
   const authMode = getAuthMode();
   const isUser = authMode === "user" || authMode === "email";
@@ -221,6 +229,7 @@ export function AdminLayout() {
   const isAuthenticated = isUser ? !!userToken : !!adminKey;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [webuiUrl, setWebuiUrl] = useState<string | null>(null);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   // Escape key closes mobile drawer
@@ -232,6 +241,16 @@ export function AdminLayout() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [drawerOpen]);
+
+  // Fetch webui_url from API for user mode
+  useEffect(() => {
+    if (!isUser) return;
+    const agentId = parseInt(localStorage.getItem("admin_user_agent_id") || "0", 10);
+    if (agentId <= 0) return;
+    adminApi.getAgent(agentId).then((detail: { webui_url?: string }) => {
+      if (detail.webui_url) setWebuiUrl(detail.webui_url);
+    }).catch(() => {});
+  }, [isUser]);
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -245,14 +264,14 @@ export function AdminLayout() {
   }
 
   const storedAgentId = parseInt(localStorage.getItem("admin_user_agent_id") || "0", 10)
-  const opsPanelUrl = storedAgentId > 0 ? `${window.location.origin}/agent${storedAgentId}/ops/` : "#"
+  const opsPanelUrl = webuiUrl || "#"
 
   const navItems: NavItem[] = isUser
     ? [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
         { to: "/files", label: t.fileBrowser, icon: IconFolder },
         { to: "/chat", label: t.startChat, icon: IconChat },
-        ...(storedAgentId > 0 ? [{ to: "#", label: t.navAgentPanel, icon: IconTerminal, href: opsPanelUrl }] : []),
+        ...(webuiUrl ? [{ to: "#", label: t.navAgentPanel, icon: IconTerminal, href: webuiUrl }] : []),
       ]
     : [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
@@ -295,14 +314,12 @@ export function AdminLayout() {
       <div className="flex flex-col h-full">
         {/* Brand */}
         <div className="px-5 py-4 shrink-0 border-b border-border-subtle">
-          <h1 className="font-[family-name:var(--font-display)] text-base font-bold tracking-[0.12em] text-accent-pink/80">
-            NEWHERMES
-          </h1>
-          {isUser && userDisplayName && (
-            <p className="mt-1 text-xs text-text-secondary truncate" title={userDisplayName}>
-              {userDisplayName}
-            </p>
-          )}
+          <div className="flex items-center gap-2.5">
+            <LogoHermes className="w-8 h-8 shrink-0" />
+            <h1 className="text-base font-semibold tracking-[0.04em] text-text-primary">
+              NewHermes
+            </h1>
+          </div>
         </div>
 
         {/* Navigation */}
@@ -482,6 +499,28 @@ export function AdminLayout() {
             className="w-full flex items-center justify-center h-7 px-3 text-xs rounded-full border border-accent-cyan text-accent-cyan transition-colors duration-150 hover:bg-accent-cyan/10"
           >
             {t.languageSwitch}
+          </button>
+
+          {/* Theme toggle: cycle cyberpunk → dark → light */}
+          <button
+            onClick={cycleTheme}
+            className="p-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface/50 transition-colors"
+            aria-label={`Current: ${theme}. Click to switch.`}
+            title={`Theme: ${theme === "cyberpunk" ? "Cyberpunk" : theme === "dark" ? "Dark" : "Light"}`}
+          >
+            {theme === "cyberpunk" ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+              </svg>
+            ) : theme === "dark" ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+              </svg>
+            )}
           </button>
         </div>
       </div>

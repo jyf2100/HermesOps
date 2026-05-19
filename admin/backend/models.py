@@ -1,6 +1,8 @@
 from __future__ import annotations
 import datetime
+import ipaddress
 import re
+import socket
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional
 from pydantic import BaseModel, Field, StringConstraints, field_validator
@@ -34,7 +36,7 @@ def _validate_k8s_memory(value: str, field_name: str) -> str:
 
 
 def _check_ssrf(url: str) -> str:
-    """Validate base_url against SSRF by blocking metadata/local hostnames."""
+    """Validate base_url against SSRF by blocking metadata/local/private IPs."""
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
@@ -43,6 +45,18 @@ def _check_ssrf(url: str) -> str:
         raise ValueError(
             f"base_url hostname '{hostname}' is not allowed (SSRF protection)"
         )
+    # Resolve hostname and check against private/reserved IP ranges
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for family, _type, _proto, _canonname, sockaddr in addr_infos:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise ValueError(
+                    f"base_url resolves to private/reserved IP '{ip_str}' (SSRF protection)"
+                )
+    except socket.gaierror:
+        pass  # Unresolvable hostname will fail at HTTP call time
     return url
 
 
@@ -159,6 +173,7 @@ class AgentDetailResponse(BaseModel):
     health_ok: Optional[bool] = None
     health_last_check: Optional[datetime.datetime] = None
     ingress_path: Optional[str] = None
+    webui_url: Optional[str] = None
     restart_count: int = 0
     age_human: str = ""
 
@@ -207,6 +222,8 @@ class CreateAgentRequest(BaseModel):
     agent_number: int = Field(..., ge=1, le=1000)
     display_name: Optional[str] = Field(None, max_length=128)
 
+    template_id: Optional[int] = Field(None, description="Profile template to apply on creation")
+
     @field_validator("display_name", mode="before")
     @classmethod
     def _strip_display_name(cls, v):
@@ -239,6 +256,7 @@ class CreateAgentResponse(BaseModel):
     name: str
     created: bool
     steps: list[CreateStepStatus] = []
+    install_tasks: list[str] = Field(default_factory=list, description="Hub auto-install task IDs from template")
 
 
 # Config Read/Write
@@ -366,6 +384,22 @@ class TestLLMResponse(BaseModel):
     response_preview: Optional[str] = None
 
 
+# Generate Soul.md via LLM
+class GenerateSoulRequest(TestLLMRequest):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+
+
+class GenerateSoulFromAgentRequest(BaseModel):
+    agent_number: int = Field(..., ge=1, le=1000)
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+
+
+class GenerateSoulResponse(BaseModel):
+    soul_md: str = Field(..., max_length=10_000)
+
+
 # Actions
 class ActionResponse(BaseModel):
     agent_number: int
@@ -489,7 +523,7 @@ class RebindAgentRequest(BaseModel):
 
 # ── Agent Metadata ──
 
-TagStr = Annotated[str, StringConstraints(max_length=50, pattern=r"^[^\s]")]
+TagStr = Annotated[str, StringConstraints(max_length=50, pattern=r"^[^\s]+$")]
 
 # Valid domain values (extensible)
 DOMAINS = ["generalist", "code", "data", "ops", "creative"]

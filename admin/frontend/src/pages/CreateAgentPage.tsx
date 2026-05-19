@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { AgentListItem, DeployProgress } from "../lib/admin-api";
 import { adminApi, AdminApiError } from "../lib/admin-api";
 import { useI18n } from "../hooks/useI18n";
 import type { Translations } from "../i18n/zh";
+import type { ProfileTemplateData } from "../types/profile";
 import { showToast } from "../lib/toast";
 import { getApiError } from "../lib/utils";
 
@@ -177,6 +178,10 @@ export function CreateAgentPage() {
   const [deployResult, setDeployResult] = useState<DeployProgress | null>(null);
   const [deployError, setDeployError] = useState<string | null>(null);
 
+  const [templates, setTemplates] = useState<ProfileTemplateData[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const soulEditedByUser = useRef(false);
+
   const [form, setForm] = useState<CreateForm>({
     agentNumber: 1,
     displayName: "",
@@ -199,6 +204,13 @@ export function CreateAgentPage() {
         0
       );
       setForm((prev) => ({ ...prev, agentNumber: maxNum + 1 }));
+    });
+  }, []);
+
+  // Load profile templates
+  useEffect(() => {
+    adminApi.listProfileTemplates().then(setTemplates).catch(() => {
+      // Templates are optional, silently ignore
     });
   }, []);
 
@@ -332,6 +344,7 @@ export function CreateAgentPage() {
       const result = await adminApi.createAgent({
         agent_number: form.agentNumber,
         display_name: form.displayName || undefined,
+        template_id: selectedTemplateId || undefined,
         resources: {
           cpu_request: form.cpuLimit,
           cpu_limit: form.cpuLimit,
@@ -422,6 +435,16 @@ export function CreateAgentPage() {
           <StepBasicInfo
             form={form}
             errors={validationErrors}
+            templates={templates}
+            selectedTemplateId={selectedTemplateId}
+            onTemplateChange={(id) => {
+              setSelectedTemplateId(id);
+              if (soulEditedByUser.current) return;
+              const tpl = templates.find((t) => t.id === id);
+              if (tpl?.soul_md) {
+                setForm((prev) => ({ ...prev, soul: tpl.soul_md! }));
+              }
+            }}
             onChange={updateForm}
             t={t}
           />
@@ -438,13 +461,18 @@ export function CreateAgentPage() {
         {currentStep === 2 && (
           <StepAgentConfig
             form={form}
-            onChange={updateForm}
+            onChange={(partial) => {
+              if ("soul" in partial) soulEditedByUser.current = true;
+              updateForm(partial);
+            }}
             t={t}
           />
         )}
         {currentStep === 3 && (
           <StepConfirm
             form={form}
+            templates={templates}
+            selectedTemplateId={selectedTemplateId}
             deploying={deploying}
             deployResult={deployResult}
             deployError={deployError}
@@ -495,14 +523,37 @@ export function CreateAgentPage() {
 function StepBasicInfo({
   form,
   errors,
+  templates,
+  selectedTemplateId,
+  onTemplateChange,
   onChange,
   t,
 }: {
   form: CreateForm;
   errors: ValidationErrors;
+  templates: ProfileTemplateData[];
+  selectedTemplateId: number | null;
+  onTemplateChange: (id: number | null) => void;
   onChange: (partial: Partial<CreateForm>) => void;
   t: Translations;
 }) {
+  const selectedTemplate = templates.find((tpl) => tpl.id === selectedTemplateId);
+
+  // Extract auto-install skills from template config_overrides
+  const templateSkills: string[] = (() => {
+    if (!selectedTemplate) return [];
+    const skills = (selectedTemplate.config_overrides as Record<string, unknown>)?.skills;
+    if (typeof skills === "object" && skills !== null) {
+      const install = (skills as Record<string, unknown>)?.install;
+      if (Array.isArray(install)) {
+        return install.map((s: unknown): string =>
+          typeof s === "string" ? s : String((s as Record<string, unknown>)?.name ?? s)
+        );
+      }
+    }
+    return [];
+  })();
+
   return (
     <div className="space-y-4 max-w-lg">
       {/* Agent Number */}
@@ -536,6 +587,56 @@ function StepBasicInfo({
           className="h-9 w-full px-3 text-sm border border-border rounded"
         />
       </div>
+
+      {/* Profile Template */}
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          {t.createTemplate}
+        </label>
+        <select
+          value={selectedTemplateId ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            onTemplateChange(val ? Number(val) : null);
+          }}
+          className="h-9 w-full px-3 text-sm border border-border rounded bg-background"
+        >
+          <option value="">{t.createTemplateNone}</option>
+          {templates.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>
+              {tpl.display_name || tpl.name}
+              {tpl.description ? ` - ${tpl.description}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Template skills preview */}
+      {selectedTemplate && templateSkills.length > 0 && (
+        <div className="rounded-md border border-border bg-muted/50 p-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1.5">
+            {t.createTemplateSkills}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {templateSkills.map((skill) => (
+              <span
+                key={skill}
+                className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+              >
+                {skill}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {t.createTemplateSkillsCount.replace("{count}", String(templateSkills.length))}
+          </p>
+        </div>
+      )}
+      {selectedTemplate && templateSkills.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t.createTemplateNoSkills}
+        </p>
+      )}
 
       {/* CPU Limit */}
       <div>
@@ -816,12 +917,16 @@ function StepAgentConfig({
 
 function StepConfirm({
   form,
+  templates,
+  selectedTemplateId,
   deploying,
   deployResult,
   deployError,
   t,
 }: {
   form: CreateForm;
+  templates: ProfileTemplateData[];
+  selectedTemplateId: number | null;
   deploying: boolean;
   deployResult: DeployProgress | null;
   deployError: string | null;
@@ -831,11 +936,29 @@ function StepConfirm({
     PROVIDER_OPTIONS.find((p) => p.value === form.provider)?.label ||
     form.provider;
 
+  const selectedTemplate = templates.find((tpl) => tpl.id === selectedTemplateId);
+
+  const templateSkills: string[] = (() => {
+    if (!selectedTemplate) return [];
+    const skills = (selectedTemplate.config_overrides as Record<string, unknown>)?.skills;
+    if (typeof skills === "object" && skills !== null) {
+      const install = (skills as Record<string, unknown>)?.install;
+      if (Array.isArray(install)) {
+        return install.map((s: unknown): string =>
+          typeof s === "string" ? s : String((s as Record<string, unknown>)?.name ?? s)
+        );
+      }
+    }
+    return [];
+  })();
+
   const stepLabels = [
     t.deployStepSecret,
     t.deployStepInitData,
     t.deployStepCreateDeployment,
+    t.deployStepCreateService,
     t.deployStepUpdateIngress,
+    t.deployStepNipIngress,
     t.deployStepWaitReady,
   ];
 
@@ -849,6 +972,12 @@ function StepConfirm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
           <SummaryRow label={t.agentNumber} value={String(form.agentNumber)} />
           <SummaryRow label={t.displayName} value={form.displayName || "-"} />
+          {selectedTemplate && (
+            <SummaryRow
+              label={t.createTemplate}
+              value={selectedTemplate.display_name || selectedTemplate.name}
+            />
+          )}
           <SummaryRow label={t.cpuLimit} value={form.cpuLimit} />
           <SummaryRow label={t.memoryLimit} value={form.memoryLimit} />
           <SummaryRow label={t.llmProvider} value={providerLabel} />
@@ -865,6 +994,25 @@ function StepConfirm({
             />
           )}
         </div>
+
+        {/* Template skills preview */}
+        {selectedTemplate && templateSkills.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">
+              {t.createTemplateSkills}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {templateSkills.map((skill) => (
+                <span
+                  key={skill}
+                  className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SOUL.md preview */}

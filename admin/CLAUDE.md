@@ -7,9 +7,7 @@ This file provides guidance to Claude Code when working with code in this direct
 ```
 admin/
 ├── backend/          # FastAPI (Python) — K8s agent management API
-│   ├── main.py       # App entry, routes, auth, SSE token management
-│   ├── swarm_routes.py  # Swarm collaboration REST + SSE endpoints
-│   ├── swarm_models.py  # Swarm Pydantic models
+│   ├── main.py       # App entry, routes, auth, SSE token management, Orchestrator proxy
 │   ├── models.py     # All Pydantic request/response models
 │   ├── k8s_client.py # Raw K8s API client
 │   ├── agent_manager.py # Business logic (CRUD, logs, health)
@@ -22,9 +20,9 @@ admin/
 │   └── src/
 │       ├── pages/    # Route-level page components
 │       ├── components/  # Shared UI components
-│       ├── stores/   # Zustand stores (swarmRegistry, swarmEvents)
+│       ├── stores/   # Zustand stores (kanbanBoard)
 │       ├── hooks/    # Custom hooks (useI18n)
-│       ├── lib/      # Utilities (admin-api, swarm-sse, toast, utils)
+│       ├── lib/      # Utilities (admin-api, toast, utils)
 │       └── i18n/     # en.ts, zh.ts — flat key-value with Translations interface
 ├── kubernetes/       # K8s manifests (admin deployment, ingress, RBAC)
 └── templates/        # Default agent template files
@@ -64,12 +62,12 @@ docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 - SSE endpoints can't send headers (EventSource limitation) — use one-time token pattern: POST mints token, GET consumes it.
 
 ### Route Organization
-- `main.py` owns agent CRUD, config, monitoring, cluster, settings, WeChat, LLM test routes.
-- `swarm_routes.py` owns all `/admin/api/swarm/*` routes, mounted via `include_router`.
-- Swarm routes have a local `_verify_swarm_admin_key` dependency (avoids circular imports with main.py). Both read from `app.state.admin_key` so key rotation is immediately effective across all endpoints.
+- `main.py` owns agent CRUD, config, monitoring, cluster, settings, WeChat, LLM test, and Orchestrator proxy routes.
+- Additional routers: `terminal_router`, `file_browser_router`, `kanban_router`, `profile_router`, `user_router`, `hub_router`.
+- All routers read `admin_key` from `app.state.admin_key` so key rotation is immediately effective.
 
 ### Models
-- All request/response models in `models.py` (Pydantic v2). Swarm models in `swarm_models.py`.
+- All request/response models in `models.py` (Pydantic v2).
 - Never use `yaml.dump()` on enums — convert to `.value` first.
 
 ### K8s Integration
@@ -85,7 +83,7 @@ docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 
 ### State Management
 - **Server state**: Direct `adminFetch` calls in page components (no TanStack Query yet).
-- **Client state**: Zustand stores (`stores/swarmRegistry.ts`, `stores/swarmEvents.ts`).
+- **Client state**: Zustand stores (`stores/kanbanBoard.ts`).
 - **Form state**: Local `useState`. No form library.
 - **URL state**: React Router params for agent ID, tab selection.
 
@@ -96,11 +94,10 @@ docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 - Type-checked via shared `Translations` interface.
 
 ### SSE
-- `swarm-sse.ts` handles EventSource with exponential backoff reconnection.
-- One-time token auth: POST `/swarm/events/token` → GET `/swarm/events/stream?token=xxx`.
+- Log streaming uses one-time token pattern: POST mints token, GET consumes it.
 
 ### Feature Flags
-- `SwarmGuard` component wraps swarm routes — checks `GET /swarm/capability` and redirects to `/` if Redis is unreachable.
+- `OrchestratorGuard` component wraps Orchestrator routes — checks `GET /orchestrator/capability` and redirects to `/` if the orchestrator service is unreachable.
 
 ### Build
 - Vite config sets `base: '/admin/'` — all asset paths are prefixed.
@@ -118,7 +115,7 @@ docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 
 ```bash
 npm run test:e2e              # All E2E tests
-npx playwright test swarm     # Swarm tests only
+npx playwright test orchestrator  # Orchestrator tests only
 npx playwright test --ui      # Interactive UI mode
 ```
 
@@ -171,6 +168,6 @@ for the context.
 - **SPA routing**: The `_SpaFallbackMiddleware` serves `index.html` for browser navigation. The Ingress `rewrite-target` strips `/admin` prefix, so browser requests like `/admin/agents/2` become `/agents/2`.
 - **`adminFetch` returns parsed JSON**: Don't call `.json()` on the result — it's already an object.
 - **i18n sync**: Adding a key to `en.ts` without `zh.ts` (or vice versa) causes type errors.
-- **Auth source of truth**: Both `verify_admin_key` (main.py) and `_verify_swarm_admin_key` (swarm_routes.py) read from `app.state.admin_key`. Key rotation via `update_admin_key` updates both the global `ADMIN_KEY` and `app.state.admin_key` so all endpoints see the new key immediately.
+- **Auth source of truth**: All modules read from `app.state.admin_key`. Key rotation via `update_admin_key` updates both the global `ADMIN_KEY` and `app.state.admin_key` so all endpoints see the new key immediately.
 - **Static files**: Production serves from `backend/static/` — after frontend changes, rebuild and copy.
 
