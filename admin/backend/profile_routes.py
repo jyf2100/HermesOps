@@ -548,7 +548,7 @@ async def delete_profile(
         dname = deployment_name(eff_id)
         pod_name = await k8s.get_first_pod_name(dname)
         if pod_name:
-            profile_dir = f"/opt/data/profiles/{profile_name}"
+            profile_dir = f"/home/agent/.hermes/profiles/{profile_name}"
             for fname in ("config.yaml", "SOUL.md"):
                 try:
                     await k8s.delete_file_from_pod(pod_name, f"{profile_dir}/{fname}")

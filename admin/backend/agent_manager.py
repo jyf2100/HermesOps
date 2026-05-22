@@ -348,6 +348,7 @@ class AgentManager:
                 provider=resolve_agent_provider(provider_val),
                 base_url=req.llm.base_url,
                 api_mode=determine_api_mode(provider_val),
+                api_key=req.llm.api_key,
                 terminal_enabled=req.terminal_enabled,
                 browser_enabled=req.browser_enabled,
                 streaming_enabled=req.streaming_enabled,
