@@ -167,6 +167,8 @@ export interface AgentListItem {
   created_at: string | null;
   age_human: string;
   health_ok: boolean | null;
+  owner_email?: string;
+  owner_display_name?: string;
 }
 
 export interface ContainerStatus {
@@ -608,6 +610,113 @@ export interface HubCheckResult {
   items: Array<{ name: string; current_hash: string; upstream_hash: string | null; has_update: boolean }>;
 }
 
+
+// ---------------------------------------------------------------------------
+// Dispatch types
+// ---------------------------------------------------------------------------
+
+export interface DispatchChannel {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string;
+  subscriber_count: number;
+  created_at: string;
+}
+
+export interface DispatchChannelCreateRequest {
+  name: string;
+  display_name?: string;
+  description?: string;
+}
+
+export interface DispatchChannelUpdateRequest {
+  display_name?: string;
+  description?: string;
+}
+
+export interface DispatchAssignment {
+  id: number;
+  agent_number: number;
+  status: string;
+  profile_name: string | null;
+  profile_source: string | null;
+  orchestrator_task_id: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  result_summary: string | null;
+  error_message: string | null;
+}
+
+export interface DispatchTaskItem {
+  id: number;
+  title: string;
+  dispatch_type: string;
+  status: string;
+  channel_id: number | null;
+  priority: number;
+  created_by: string;
+  created_at: string;
+  result_summary: string | null;
+  assignments: DispatchAssignment[];
+}
+
+export interface DispatchTaskListResponse {
+  tasks: DispatchTaskItem[];
+  total: number;
+}
+
+export interface DispatchTaskDetail {
+  id: number;
+  title: string;
+  prompt: string;
+  instructions: string | null;
+  dispatch_type: string;
+  status: string;
+  channel_id: number | null;
+  priority: number;
+  timeout_seconds: number;
+  created_by: string;
+  created_at: string;
+  result_summary: string | null;
+  assignments: DispatchAssignment[];
+}
+
+export interface DispatchTaskCreateRequest {
+  title: string;
+  prompt: string;
+  instructions?: string;
+  dispatch_type: "direct" | "channel";
+  target_agents?: number[];
+  channel_id?: number;
+  priority?: number;
+  timeout_seconds?: number;
+  confirm_timeout_hours?: number;
+}
+
+// User-mode task item (from /dispatch/my-tasks)
+export interface MyDispatchTask {
+  assignment_id: number;
+  task_id: number;
+  title: string;
+  prompt: string;
+  instructions: string | null;
+  status: string;
+  created_at: string | null;
+  result_summary: string | null;
+  completed_at: string | null;
+  profile_hint?: string;
+}
+
+export interface DispatchTaskCreateResponse {
+  task_id: number;
+  status: string;
+  assignments: Array<{
+    agent_number: number;
+    status: string;
+    error?: string;
+  }>;
+}
 
 // ---------------------------------------------------------------------------
 // File Browser
@@ -1275,6 +1384,69 @@ export const adminApi = {
 
   hubTaskStatus(agentId: number, taskId: string): Promise<HubTask> {
     return adminFetch(`/hub/agents/${agentId}/tasks/${taskId}`);
+  },
+
+  // -- Dispatch --
+  listDispatchChannels(): Promise<DispatchChannel[]> {
+    return adminFetch("/dispatch/channels");
+  },
+
+  createDispatchChannel(req: DispatchChannelCreateRequest): Promise<DispatchChannel> {
+    return adminFetch("/dispatch/channels", { method: "POST", body: JSON.stringify(req) });
+  },
+
+  updateDispatchChannel(id: number, req: DispatchChannelUpdateRequest): Promise<DispatchChannel> {
+    return adminFetch(`/dispatch/channels/${id}`, { method: "PUT", body: JSON.stringify(req) });
+  },
+
+  deleteDispatchChannel(id: number): Promise<{ status: string }> {
+    return adminFetch(`/dispatch/channels/${id}`, { method: "DELETE" });
+  },
+
+  getChannelSubscribers(channelId: number): Promise<{ agent_numbers: number[] }> {
+    return adminFetch(`/dispatch/channels/${channelId}/subscribers`);
+  },
+
+  setChannelSubscribers(channelId: number, agentNumbers: number[]): Promise<{ status: string; count: number }> {
+    return adminFetch(`/dispatch/channels/${channelId}/subscribers`, {
+      method: "POST",
+      body: JSON.stringify({ agent_numbers: agentNumbers }),
+    });
+  },
+
+  listDispatchTasks(params?: { status?: string; agent_number?: number; limit?: number; offset?: number }): Promise<DispatchTaskListResponse> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.agent_number) query.set("agent_number", String(params.agent_number));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return adminFetch(`/dispatch/tasks${qs ? `?${qs}` : ""}`);
+  },
+
+  getDispatchTask(taskId: number): Promise<DispatchTaskDetail> {
+    return adminFetch(`/dispatch/tasks/${taskId}`);
+  },
+
+  createDispatchTask(req: DispatchTaskCreateRequest): Promise<DispatchTaskCreateResponse> {
+    return adminFetch("/dispatch/tasks", { method: "POST", body: JSON.stringify(req) });
+  },
+
+  cancelDispatchTask(taskId: number): Promise<{ status: string }> {
+    return adminFetch(`/dispatch/tasks/${taskId}/cancel`, { method: "POST" });
+  },
+
+  // -- User-mode dispatch --
+  listMyTasks(): Promise<{ tasks: MyDispatchTask[] }> {
+    return adminFetch("/dispatch/my-tasks");
+  },
+
+  confirmMyTask(assignmentId: number): Promise<{ status: string }> {
+    return adminFetch(`/dispatch/my-tasks/${assignmentId}/confirm`, { method: "POST" });
+  },
+
+  rejectMyTask(assignmentId: number): Promise<{ status: string }> {
+    return adminFetch(`/dispatch/my-tasks/${assignmentId}/reject`, { method: "POST" });
   },
 
   // -- Soul.md AI Generation --

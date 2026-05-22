@@ -45,6 +45,8 @@ export const mockAgentList = {
       created_at: "2026-04-15T10:00:00Z",
       age_human: "5d",
       health_ok: true,
+      owner_email: "zhangsan@example.com",
+      owner_display_name: "张三",
     },
     {
       id: 2,
@@ -63,6 +65,8 @@ export const mockAgentList = {
       created_at: "2026-04-16T08:00:00Z",
       age_human: "4d",
       health_ok: null,
+      owner_email: "lisi@example.com",
+      owner_display_name: "李四",
     },
     {
       id: 3,
@@ -622,3 +626,246 @@ export const mockSkillsSummary = {
 };
 
 export const mockEmptySkillsSummary = { skills: [] };
+
+// -- Dispatch Channels --
+export const mockDispatchChannels = [
+  {
+    id: 1,
+    name: "engineering",
+    display_name: "Engineering Team",
+    description: "All engineering agents",
+    subscriber_count: 2,
+    created_at: "2026-05-01T10:00:00Z",
+  },
+  {
+    id: 2,
+    name: "support",
+    display_name: "Support Team",
+    description: "Customer support agents",
+    subscriber_count: 1,
+    created_at: "2026-05-02T14:00:00Z",
+  },
+];
+
+export const mockEmptyDispatchChannels: unknown[] = [];
+
+export const mockCreatedDispatchChannel = {
+  id: 3,
+  name: "research",
+  display_name: "Research Team",
+  description: "Research and analysis agents",
+  subscriber_count: 0,
+  created_at: "2026-05-20T10:00:00Z",
+};
+
+export const mockUpdatedDispatchChannel = {
+  id: 1,
+  name: "engineering",
+  display_name: "Engineering Team Updated",
+  description: "Updated description",
+  subscriber_count: 2,
+  created_at: "2026-05-01T10:00:00Z",
+};
+
+export const mockChannelSubscribers = { agent_numbers: [1, 2] };
+
+export const mockUpdatedChannelSubscribers = { status: "updated", count: 3 };
+
+// -- Dispatch Tasks --
+export const mockDispatchTasks = {
+  tasks: [
+    {
+      id: 101,
+      title: "Review code changes",
+      dispatch_type: "direct",
+      status: "completed",
+      channel_id: null,
+      priority: 5,
+      created_by: "admin",
+      created_at: "2026-05-19T10:00:00Z",
+      result_summary: "All agents completed",
+      assignments: [
+        {
+          id: 201,
+          agent_number: 1,
+          status: "completed",
+          profile_name: "default",
+          profile_source: "template",
+          orchestrator_task_id: "task-abc",
+          started_at: "2026-05-19T10:01:00Z",
+          completed_at: "2026-05-19T10:05:00Z",
+          result_summary: "Reviewed 3 files",
+          error_message: null,
+        },
+      ],
+    },
+    {
+      id: 102,
+      title: "Translate documentation",
+      dispatch_type: "channel",
+      status: "dispatching",
+      channel_id: 1,
+      priority: 3,
+      created_by: "admin",
+      created_at: "2026-05-19T12:00:00Z",
+      result_summary: null,
+      assignments: [
+        {
+          id: 202,
+          agent_number: 1,
+          status: "dispatched",
+          profile_name: "translator",
+          profile_source: "template",
+          orchestrator_task_id: "task-def",
+          started_at: "2026-05-19T12:01:00Z",
+          completed_at: null,
+          result_summary: null,
+          error_message: null,
+        },
+        {
+          id: 203,
+          agent_number: 2,
+          status: "pending",
+          profile_name: null,
+          profile_source: null,
+          orchestrator_task_id: null,
+          started_at: null,
+          completed_at: null,
+          result_summary: null,
+          error_message: null,
+        },
+      ],
+    },
+    {
+      id: 103,
+      title: "Analyze performance",
+      dispatch_type: "direct",
+      status: "failed",
+      channel_id: null,
+      priority: 7,
+      created_by: "admin",
+      created_at: "2026-05-18T08:00:00Z",
+      result_summary: "1 of 2 agents failed",
+      assignments: [
+        {
+          id: 204,
+          agent_number: 1,
+          status: "completed",
+          profile_name: "default",
+          profile_source: null,
+          orchestrator_task_id: "task-ghi",
+          started_at: "2026-05-18T08:01:00Z",
+          completed_at: "2026-05-18T08:10:00Z",
+          result_summary: "Analysis done",
+          error_message: null,
+        },
+        {
+          id: 205,
+          agent_number: 3,
+          status: "failed",
+          profile_name: null,
+          profile_source: null,
+          orchestrator_task_id: "task-jkl",
+          started_at: "2026-05-18T08:01:00Z",
+          completed_at: "2026-05-18T08:02:00Z",
+          result_summary: null,
+          error_message: "Agent not responding",
+        },
+      ],
+    },
+  ],
+  total: 3,
+};
+
+export const mockEmptyDispatchTasks = { tasks: [], total: 0 };
+
+export const mockDispatchTaskDetail = {
+  id: 101,
+  title: "Review code changes",
+  prompt: "Review the latest pull request and provide feedback on code quality.",
+  instructions: "Focus on security and performance.",
+  dispatch_type: "direct",
+  status: "completed",
+  channel_id: null,
+  priority: 5,
+  created_by: "admin",
+  created_at: "2026-05-19T10:00:00Z",
+  result_summary: "All agents completed",
+  assignments: [
+    {
+      id: 201,
+      agent_number: 1,
+      status: "completed",
+      profile_name: "default",
+      profile_source: "template",
+      orchestrator_task_id: "task-abc",
+      started_at: "2026-05-19T10:01:00Z",
+      completed_at: "2026-05-19T10:05:00Z",
+      result_summary: "Reviewed 3 files",
+      error_message: null,
+    },
+  ],
+};
+
+export const mockDispatchTaskCreateResponse = {
+  id: 104,
+  title: "New dispatch task",
+  status: "dispatched",
+  assignments: [
+    { id: 301, agent_number: 1, status: "dispatched" },
+    { id: 302, agent_number: 2, status: "dispatched" },
+  ],
+};
+
+export const mockDispatchTaskCancelResponse = { status: "cancelled" };
+
+// -- User-mode dispatch --
+
+export const VALID_USER_TOKEN = "test-user-token-abcdef";
+
+export const mockUserLoginResponse = {
+  token: VALID_USER_TOKEN,
+  agent_id: 1,
+  display_name: "Agent #1",
+  expires_in: 7200,
+};
+
+export const mockMyDispatchTasks = {
+  tasks: [
+    {
+      assignment_id: 101,
+      task_id: 10,
+      title: "Review code changes",
+      prompt: "Please review the latest pull request and provide feedback",
+      instructions: "Focus on security and performance",
+      status: "pending",
+      created_at: "2026-05-20T10:00:00Z",
+      result_summary: null,
+      completed_at: null,
+    },
+    {
+      assignment_id: 102,
+      task_id: 11,
+      title: "Translate documentation",
+      prompt: "Translate all docs to Chinese",
+      instructions: null,
+      status: "confirmed",
+      created_at: "2026-05-19T14:00:00Z",
+      result_summary: null,
+      completed_at: null,
+    },
+    {
+      assignment_id: 103,
+      task_id: 12,
+      title: "Analyze performance",
+      prompt: "Profile the API and find bottlenecks",
+      instructions: "Check database queries first",
+      status: "completed",
+      created_at: "2026-05-18T09:00:00Z",
+      result_summary: "Found 3 N+1 queries, fixed them",
+      completed_at: "2026-05-18T12:00:00Z",
+    },
+  ],
+};
+
+export const mockEmptyMyTasks = { tasks: [] };

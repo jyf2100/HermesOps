@@ -101,6 +101,7 @@ class TemplateGenerator:
     def render_config_yaml(self, default_model: str = "anthropic/claude-sonnet-4-20250514",
                            provider: str = "openrouter", base_url: str | None = None,
                            api_mode: str | None = None,
+                           api_key: str | None = None,
                            terminal_enabled: bool = True, browser_enabled: bool = False,
                            streaming_enabled: bool = True, memory_enabled: bool = True,
                            session_reset_enabled: bool = False,
@@ -138,6 +139,15 @@ class TemplateGenerator:
                 "message_bus": swarm_redis_url,
                 "heartbeat_interval": 30,
             }
+        # Generate custom_providers for hermes-web-ui model discovery
+        _placeholder = PROVIDER_URL_MAP.get("custom")
+        if provider == "custom" and resolved_url and resolved_url != _placeholder:
+            config_data["custom_providers"] = [{
+                "name": "default",
+                "base_url": resolved_url.rstrip("/"),
+                "model": default_model,
+                "api_key": api_key or "",
+            }]
         return yaml.dump(config_data, default_flow_style=False, allow_unicode=True)
 
     def render_service(self, agent_number: int, namespace: str = "hermes-agent") -> dict:

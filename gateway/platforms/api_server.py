@@ -794,6 +794,7 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_start_callback=None,
         tool_complete_callback=None,
         gateway_session_key: Optional[str] = None,
+        dispatch_metadata: Optional[dict] = None,
     ) -> Any:
         """
         Create an AIAgent instance using the gateway's runtime config.
@@ -845,6 +846,7 @@ class APIServerAdapter(BasePlatformAdapter):
             fallback_model=fallback_model,
             reasoning_config=reasoning_config,
             gateway_session_key=gateway_session_key,
+            dispatch_metadata=dispatch_metadata,
         )
         return agent
 
@@ -2773,6 +2775,7 @@ class APIServerAdapter(BasePlatformAdapter):
             return web.json_response(_openai_error("No user message found in input"), status=400)
 
         instructions = body.get("instructions")
+        run_metadata = body.get("metadata")
         previous_response_id = body.get("previous_response_id")
 
         # Accept explicit conversation_history from the request body.
@@ -2861,6 +2864,7 @@ class APIServerAdapter(BasePlatformAdapter):
                     stream_delta_callback=_text_cb,
                     tool_progress_callback=event_cb,
                     gateway_session_key=gateway_session_key,
+                    dispatch_metadata=run_metadata,
                 )
                 self._active_run_agents[run_id] = agent
                 def _run_sync():

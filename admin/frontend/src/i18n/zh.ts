@@ -848,6 +848,72 @@ export interface Translations {
   skillsAutoInstallProgress: string;
   skillsAutoInstallComplete: string;
   skillsAutoInstallPartial: string;
+  // Dispatch
+  dispatchTitle: string;
+  dispatchChannels: string;
+  dispatchTasks: string;
+  dispatchNewTask: string;
+  dispatchCreateChannel: string;
+  dispatchEditChannel: string;
+  dispatchDeleteChannel: string;
+  dispatchChannelName: string;
+  dispatchChannelDisplayName: string;
+  dispatchChannelDescription: string;
+  dispatchSubscribers: string;
+  dispatchSubscriberCount: string;
+  dispatchNoSubscribers: string;
+  dispatchTaskTitle: string;
+  dispatchTaskPrompt: string;
+  dispatchTaskInstructions: string;
+  dispatchTaskType: string;
+  dispatchTaskTypeDirect: string;
+  dispatchTaskTypeChannel: string;
+  dispatchTaskTargetAgents: string;
+  dispatchTaskChannel: string;
+  dispatchTaskPriority: string;
+  dispatchTaskTimeout: string;
+  dispatchTaskConfirmTimeout: string;
+  dispatchTaskProfileHint: string;
+  dispatchTaskStatus: string;
+  dispatchTaskCreatedBy: string;
+  dispatchTaskCreatedAt: string;
+  dispatchTaskResult: string;
+  dispatchTaskAssignments: string;
+  dispatchAssignmentStatus: string;
+  dispatchAssignmentAgent: string;
+  dispatchAssignmentProfile: string;
+  dispatchAssignmentResult: string;
+  dispatchAssignmentError: string;
+  dispatchStatusDispatching: string;
+  dispatchStatusDispatched: string;
+  dispatchStatusPartial: string;
+  dispatchStatusPending: string;
+  dispatchStatusConfirmed: string;
+  dispatchStatusExecuting: string;
+  dispatchStatusCompleted: string;
+  dispatchStatusFailed: string;
+  dispatchStatusRejected: string;
+  dispatchStatusExpired: string;
+  dispatchStatusNotified: string;
+  dispatchStatusCancelled: string;
+  dispatchCancel: string;
+  dispatchCancelConfirm: string;
+  dispatchCreateSuccess: string;
+  dispatchCreatePartial: string;
+  dispatchCancelSuccess: string;
+  dispatchNoChannels: string;
+  dispatchNoTasks: string;
+  dispatchSelectAgents: string;
+  dispatchSelectChannel: string;
+  dispatchLoading: string;
+  dispatchAgent: string;
+  dispatchViewDetail: string;
+  dispatchDeleteChannelConfirm: string;
+  myTasks: string;
+  noTasksYet: string;
+  dispatchConfirmSuccess: string;
+  dispatchRejectSuccess: string;
+  dispatchCompletedAt: string;
 }
 
 export const zh: Translations = {
@@ -1724,4 +1790,71 @@ export const zh: Translations = {
   skillsAutoInstallProgress: "正在安装 {done}/{total}...",
   skillsAutoInstallComplete: "安装完成",
   skillsAutoInstallPartial: "部分完成（{failed} 个失败）",
+
+  // Dispatch
+  dispatchTitle: "任务调度",
+  dispatchChannels: "频道",
+  dispatchTasks: "任务",
+  dispatchNewTask: "新建任务",
+  dispatchCreateChannel: "创建频道",
+  dispatchEditChannel: "编辑频道",
+  dispatchDeleteChannel: "删除频道",
+  dispatchChannelName: "频道名称",
+  dispatchChannelDisplayName: "显示名称",
+  dispatchChannelDescription: "描述",
+  dispatchSubscribers: "订阅者",
+  dispatchSubscriberCount: "{count} 个订阅者",
+  dispatchNoSubscribers: "暂无订阅者",
+  dispatchTaskTitle: "标题",
+  dispatchTaskPrompt: "提示词",
+  dispatchTaskInstructions: "指令",
+  dispatchTaskType: "调度类型",
+  dispatchTaskTypeDirect: "直接分配",
+  dispatchTaskTypeChannel: "频道广播",
+  dispatchTaskTargetAgents: "目标 Agent",
+  dispatchTaskChannel: "频道",
+  dispatchTaskPriority: "优先级",
+  dispatchTaskTimeout: "超时（秒）",
+  dispatchTaskConfirmTimeout: "确认超时（小时）",
+  dispatchTaskProfileHint: "Profile 提示",
+  dispatchTaskStatus: "状态",
+  dispatchTaskCreatedBy: "创建者",
+  dispatchTaskCreatedAt: "创建时间",
+  dispatchTaskResult: "结果",
+  dispatchTaskAssignments: "分配详情",
+  dispatchAssignmentStatus: "状态",
+  dispatchAssignmentAgent: "Agent",
+  dispatchAssignmentProfile: "Profile",
+  dispatchAssignmentResult: "结果",
+  dispatchAssignmentError: "错误",
+  dispatchStatusDispatching: "调度中",
+  dispatchStatusDispatched: "已调度",
+  dispatchStatusPartial: "部分成功",
+  dispatchStatusPending: "待确认",
+  dispatchStatusConfirmed: "已确认",
+  dispatchStatusExecuting: "执行中",
+  dispatchStatusCompleted: "已完成",
+  dispatchStatusFailed: "失败",
+  dispatchStatusRejected: "已拒绝",
+  dispatchStatusExpired: "已过期",
+  dispatchStatusNotified: "已通知",
+  dispatchStatusCancelled: "已取消",
+  dispatchCancel: "取消任务",
+  dispatchCancelConfirm: "确认取消此任务？进行中的分配将被停止。",
+  dispatchCreateSuccess: "任务调度成功",
+  dispatchCreatePartial: "任务调度完成，部分失败",
+  dispatchCancelSuccess: "任务已取消",
+  dispatchNoChannels: "暂无频道",
+  dispatchNoTasks: "暂无调度任务",
+  dispatchSelectAgents: "选择 Agent...",
+  dispatchSelectChannel: "选择频道...",
+  dispatchLoading: "加载中...",
+  dispatchAgent: "Agent {number}",
+  dispatchViewDetail: "查看详情",
+  dispatchDeleteChannelConfirm: "确认删除频道「{name}」？此操作不可撤销。",
+  myTasks: "我的任务",
+  noTasksYet: "暂无任务",
+  dispatchConfirmSuccess: "任务已确认",
+  dispatchRejectSuccess: "任务已拒绝",
+  dispatchCompletedAt: "完成时间",
 };

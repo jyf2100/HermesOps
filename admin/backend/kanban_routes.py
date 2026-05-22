@@ -1,4 +1,4 @@
-"""Kanban proxy routes -- forwards admin requests to agent Dashboard sidecars."""
+"""Kanban proxy routes -- forwards admin requests to agent WebUI kanban API."""
 import asyncio
 import json
 import logging
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agents/{agent_id}/kanban", tags=["kanban"])
 
 NAMESPACE = "hermes-agent"
-_CLIENT_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
+_CLIENT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 _dashboard_cache: dict[str, httpx.AsyncClient] = {}
 _cache_lock = asyncio.Lock()
 
@@ -31,7 +31,7 @@ _MAX_BODY_SIZE = 1 << 20  # 1 MiB
 
 def _dashboard_url(agent_id: int) -> str:
     svc = deployment_name(agent_id)
-    return f"http://{svc}.{NAMESPACE}.svc.cluster.local:9119"
+    return f"http://{svc}.{NAMESPACE}.svc.cluster.local:6060"
 
 
 async def _get_client(base_url: str) -> httpx.AsyncClient:
@@ -56,10 +56,10 @@ async def _proxy(
     agent_id: int,
     path: str,
 ) -> StarletteResponse:
-    """Forward a request to the dashboard sidecar.
+    """Forward a request to the agent WebUI kanban API.
 
     Preserves method, query params, body, and content-type.
-    Returns 502 JSON when the sidecar is unreachable.
+    Returns 502 JSON when the WebUI is unreachable.
     """
     base_url = _dashboard_url(agent_id)
     client = await _get_client(base_url)
@@ -67,18 +67,35 @@ async def _proxy(
     body = await request.body()
     if len(body) > _MAX_BODY_SIZE:
         raise HTTPException(status_code=413, detail="Request body too large")
+
+    # Get agent API key for Bearer auth (lazy import to avoid circular dependency)
+    import base64
+    from main import k8s as _k8s
+    secret_name = f"hermes-gateway-{agent_id}-secret"
+    api_key = ""
+    try:
+        secret = await _k8s.get_secret(secret_name)
+        if secret and secret.data and "api_key" in secret.data:
+            api_key = base64.b64decode(secret.data["api_key"]).decode("utf-8")
+    except Exception as exc:
+        logger.warning("Failed to read API key for agent %s: %s", agent_id, exc)
+
     resp: httpx.Response | None = None
     try:
+        forward_headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.lower() in ("content-type", "accept")
+        }
+        if api_key:
+            forward_headers["Authorization"] = f"Bearer {api_key}"
+
         resp = await client.request(
             method=request.method,
             url=path,
             params=dict(request.query_params),
             content=body or None,
-            headers={
-                k: v
-                for k, v in request.headers.items()
-                if k.lower() in ("content-type", "accept")
-            },
+            headers=forward_headers,
         )
     except httpx.ConnectError as exc:
         logger.warning("Kanban dashboard unreachable for agent %s: %s", agent_id, exc)
@@ -114,43 +131,43 @@ async def _proxy(
 @router.get("/board", dependencies=[auth])
 async def kanban_board(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: GET board state."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/board")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/hermes/kanban/board")
 
 
 @router.get("/tasks", dependencies=[auth])
 async def kanban_list_tasks(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: GET all tasks (flattened from board columns, includes archived)."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/board")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/hermes/kanban/board")
 
 
 @router.get("/tasks/{task_id}", dependencies=[auth])
 async def kanban_get_task(request: Request, agent_id: int, task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_-]{1,128}$")) -> StarletteResponse:
     """Proxy: GET single task."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/plugins/kanban/tasks/{task_id}")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/hermes/kanban/tasks/{task_id}")
 
 
 @router.post("/tasks", dependencies=[auth])
 async def kanban_create_task(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: POST create task."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/tasks")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/hermes/kanban/tasks")
 
 
 @router.patch("/tasks/{task_id}", dependencies=[auth])
 async def kanban_update_task(request: Request, agent_id: int, task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_-]{1,128}$")) -> StarletteResponse:
     """Proxy: PATCH update task."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/plugins/kanban/tasks/{task_id}")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/hermes/kanban/tasks/{task_id}")
 
 
 @router.post("/tasks/{task_id}/comments", dependencies=[auth])
 async def kanban_add_comment(request: Request, agent_id: int, task_id: str = Path(..., pattern=r"^[a-zA-Z0-9_-]{1,128}$")) -> StarletteResponse:
     """Proxy: POST add comment to task."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/plugins/kanban/tasks/{task_id}/comments")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), f"/api/hermes/kanban/tasks/{task_id}/comments")
 
 
 @router.get("/stats", dependencies=[auth])
 async def kanban_stats(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: GET kanban statistics."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/stats")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/hermes/kanban/stats")
 
 
 @router.get("/assignees", dependencies=[auth])
@@ -161,7 +178,7 @@ async def kanban_assignees(request: Request, agent_id: int) -> StarletteResponse
     DB agent_profiles table and provisioning missing config files on the pod.
     """
     eff_id = get_effective_agent_id(request, agent_id)
-    resp = await _proxy(request, eff_id, "/api/plugins/kanban/assignees")
+    resp = await _proxy(request, eff_id, "/api/hermes/kanban/assignees")
 
     if resp.status_code != 200:
         return resp
@@ -177,7 +194,7 @@ async def kanban_assignees(request: Request, agent_id: int) -> StarletteResponse
     try:
         await _auto_discover_profiles(eff_id, assignees)
         # Re-fetch to get updated on_disk status after sync
-        return await _proxy(request, eff_id, "/api/plugins/kanban/assignees")
+        return await _proxy(request, eff_id, "/api/hermes/kanban/assignees")
     except Exception as exc:
         logger.warning("Auto-discover failed for agent %s: %s", eff_id, exc)
         return resp
@@ -274,4 +291,4 @@ async def _auto_discover_profiles(agent_number: int, assignees: list[dict]):
 @router.post("/dispatch", dependencies=[auth])
 async def kanban_dispatch(request: Request, agent_id: int) -> StarletteResponse:
     """Proxy: POST dispatch task assignment."""
-    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/plugins/kanban/dispatch")
+    return await _proxy(request, get_effective_agent_id(request, agent_id), "/api/hermes/kanban/dispatch")

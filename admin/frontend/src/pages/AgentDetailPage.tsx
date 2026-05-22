@@ -28,6 +28,7 @@ import { showToast } from "../lib/toast";
 import { WeChatCard } from "../components/WeChatCard";
 import { WeChatQRModal } from "../components/WeChatQRModal";
 import { TerminalTab } from "../components/TerminalTab";
+import { ProfileList } from "../components/profile/ProfileList";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,7 +59,7 @@ function logLineColor(line: string): string {
 // Tab definitions
 // ---------------------------------------------------------------------------
 
-const TAB_IDS = ["overview", "config", "logs", "events", "health", "terminal"] as const;
+const TAB_IDS = ["overview", "config", "logs", "events", "health", "profiles", "terminal"] as const;
 type TabId = (typeof TAB_IDS)[number];
 
 // ---------------------------------------------------------------------------
@@ -286,6 +287,9 @@ export function AgentDetailPage() {
         <HealthTab agentId={agentId} />
       )}
 
+      {activeTab === "profiles" && (
+        <ProfileList agentId={agentId} />
+      )}
       {activeTab === "terminal" && (
         <TerminalTab agentId={agentId} />
       )}

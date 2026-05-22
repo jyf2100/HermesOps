@@ -8,11 +8,8 @@ import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
 import { FileBrowserPage } from "./pages/FileBrowserPage";
 import { TemplateListPage } from "./pages/TemplateListPage";
-// Orchestrator — pages created by other tasks
-import { OrchestratorGuard } from "./components/OrchestratorGuard";
-import { OrchestratorOverviewPage } from "./pages/orchestrator/OrchestratorOverviewPage";
-import { TaskSubmitPage } from "./pages/orchestrator/TaskSubmitPage";
-import { TaskDetailPage } from "./pages/orchestrator/TaskDetailPage";
+import { TaskDispatchPage } from "./pages/TaskDispatchPage";
+import { MyTasksPage } from "./pages/MyTasksPage";
 import { setAdminKey, getAuthMode } from "./lib/admin-api";
 import { useEffect } from "react";
 
@@ -36,12 +33,8 @@ function App() {
           <Route path="/files" element={<FileBrowserPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/templates" element={<TemplateListPage />} />
-          {/* Orchestrator routes */}
-          <Route element={<OrchestratorGuard />}>
-            <Route path="/orchestrator" element={<OrchestratorOverviewPage />} />
-            <Route path="/orchestrator/tasks/new" element={<TaskSubmitPage />} />
-            <Route path="/orchestrator/tasks/:taskId" element={<TaskDetailPage />} />
-          </Route>
+          <Route path="/dispatch" element={<TaskDispatchPage />} />
+          <Route path="/my-tasks" element={<MyTasksPage />} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
       </Routes>

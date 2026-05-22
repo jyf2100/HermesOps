@@ -85,6 +85,14 @@ Admin deployment uses `imagePullPolicy: Never` — import images to containerd:
 docker save hermes-admin:latest | sudo ctr -n k8s.io images import -
 ```
 
+**必须用 kustomize apply 部署，不能用 `kubectl rollout restart` 代替。** `rollout restart` 只重启 Pod 不更新 deployment spec；手动 `kubectl set env` / `kubectl edit` 会覆盖 kustomize overlay 管理的 env 配置（如 ORCHESTRATOR_API_KEY），导致环境变量丢失。正确流程：
+```bash
+# 184 开发集群
+sudo kubectl apply -k admin/kubernetes/overlays/dev184/
+# 183 测试集群
+ssh root@172.32.153.183 "kubectl apply -k /path/to/admin/kubernetes/overlays/test183/"
+```
+
 RBAC: Admin ClusterRole needs `metrics.k8s.io` permissions for resource monitoring. See `admin/kubernetes/rbac.yaml`.
 
 ## Project-Specific Pitfalls
@@ -94,6 +102,12 @@ RBAC: Admin ClusterRole needs `metrics.k8s.io` permissions for resource monitori
 - **Skin system** (`hermes_cli/skin_engine.py`) is pure data — YAML drop-in to `~/.hermes/skins/`.
 - **`yaml.dump()`** serializes Python enums as `!!python/object/apply:` tags. Always convert to `.value` first.
 
+## hermes-web-ui 源码路径
+/mnt/disk01/workspaces/worksummary/hermes-web-ui 
+
+## 构建部署规范
+
+/mnt/disk01/workspaces/worksummary/hermes-agent/admin/kubernetes
 
 ## 开发环境
 1、172.32.153.184是当前开发服务器可以sudo -u root

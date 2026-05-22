@@ -29,11 +29,14 @@ class TaskExecutor:
     def __init__(self, config: OrchestratorConfig):
         self._config = config
 
-    async def submit_run(self, gateway_url: str, prompt: str, instructions: str = "", *, headers: dict | None = None) -> str:
+    async def submit_run(self, gateway_url: str, prompt: str, instructions: str = "", *, headers: dict | None = None, metadata: dict | None = None) -> str:
+        body: dict = {"input": prompt, "instructions": instructions}
+        if metadata:
+            body["metadata"] = metadata
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{gateway_url}/v1/runs",
-                json={"input": prompt, "instructions": instructions},
+                json=body,
                 headers=headers or self._config.gateway_headers,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:

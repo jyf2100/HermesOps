@@ -24,7 +24,7 @@ from hermes_orchestrator.models.api import (
     TaskSubmitResponse,
     TaskStatusResponse,
 )
-from hermes_orchestrator.models.task import Task
+from hermes_orchestrator.models.task import Task, RoutingInfo
 from hermes_orchestrator.services.agent_discovery import AgentDiscoveryService
 from hermes_orchestrator.services.agent_selector import AgentSelector
 from hermes_orchestrator.services.health_monitor import HealthMonitor
@@ -232,6 +232,7 @@ async def submit_task(req: TaskSubmitRequest, response: Response):
         required_tags=req.required_tags,
         domain=req.domain,
         preferred_tags=req.preferred_tags,
+        target_agent_id=req.target_agent_id,
         created_at=time.time(),
     )
     task_store.create(task)
@@ -404,45 +405,73 @@ async def _process_task(task_id: str):
     agents = await loop.run_in_executor(None, agent_registry.list_agents)
     for a in agents:
         a.circuit_state = circuit_store.check_state(a.agent_id)[0]
-    chosen, routing_info = selector.select(agents, task)
-    if routing_info:
+    if task.target_agent_id:
+        # Direct dispatch: find matching agent by deployment name prefix
+        matched = [a for a in agents if a.agent_id.startswith(task.target_agent_id + "-")]
+        if not matched:
+            matched = [a for a in agents if a.agent_id == task.target_agent_id]
+        if not matched:
+            await loop.run_in_executor(
+                None,
+                partial(
+                    task_store.update, task_id, status="failed",
+                    error=f"Target agent {task.target_agent_id} not available",
+                ),
+            )
+            return
+        chosen = matched[0]
+        routing_info = RoutingInfo(
+            strategy="direct_dispatch",
+            chosen_agent_id=chosen.agent_id,
+            scores={},
+            matched_tags=[],
+            fallback=False,
+            reason=f"Direct dispatch to {task.target_agent_id}",
+        )
         await loop.run_in_executor(
             None,
             partial(task_store.update, task_id, routing_info=routing_info),
         )
-    if not chosen:
-        # Check if the routing info indicates we should requeue instead of failing
-        should_requeue = routing_info and routing_info.requeue
-        if should_requeue:
-            current = await loop.run_in_executor(None, task_store.get, task_id)
-            if current and current.retry_count < current.max_retries:
-                new_count = current.retry_count + 1
-                await loop.run_in_executor(
-                    None,
-                    partial(
-                        task_store.update,
-                        task_id,
-                        status="queued",
-                        assigned_agent=None,
-                        retry_count=new_count,
-                        error=None,
-                    ),
-                )
-                requeued_task = await loop.run_in_executor(None, task_store.get, task_id)
-                if requeued_task:
-                    await loop.run_in_executor(None, task_store.enqueue, requeued_task)
-                logger.info(
-                    "Task %s re-queued (attempt %d/%d, required_tags unsatisfied)",
-                    task_id, new_count, current.max_retries,
-                )
-                return
-        await loop.run_in_executor(
-            None,
-            partial(
-                task_store.update, task_id, status="failed", error="No available agent"
-            ),
-        )
-        return
+    else:
+        chosen, routing_info = selector.select(agents, task)
+        if routing_info:
+            await loop.run_in_executor(
+                None,
+                partial(task_store.update, task_id, routing_info=routing_info),
+            )
+        if not chosen:
+            # Check if the routing info indicates we should requeue instead of failing
+            should_requeue = routing_info and routing_info.requeue
+            if should_requeue:
+                current = await loop.run_in_executor(None, task_store.get, task_id)
+                if current and current.retry_count < current.max_retries:
+                    new_count = current.retry_count + 1
+                    await loop.run_in_executor(
+                        None,
+                        partial(
+                            task_store.update,
+                            task_id,
+                            status="queued",
+                            assigned_agent=None,
+                            retry_count=new_count,
+                            error=None,
+                        ),
+                    )
+                    requeued_task = await loop.run_in_executor(None, task_store.get, task_id)
+                    if requeued_task:
+                        await loop.run_in_executor(None, task_store.enqueue, requeued_task)
+                    logger.info(
+                        "Task %s re-queued (attempt %d/%d, required_tags unsatisfied)",
+                        task_id, new_count, current.max_retries,
+                    )
+                    return
+            await loop.run_in_executor(
+                None,
+                partial(
+                    task_store.update, task_id, status="failed", error="No available agent"
+                ),
+            )
+            return
     await loop.run_in_executor(
         None,
         partial(task_store.update, task_id, status="assigned", assigned_agent=chosen.agent_id),
@@ -468,6 +497,7 @@ async def _process_task(task_id: str):
         run_id = await executor.submit_run(
             chosen.gateway_url, task.prompt, task.instructions,
             headers=chosen.gateway_headers(),
+            metadata=task.metadata if task.metadata else None,
         )
         await loop.run_in_executor(
             None, partial(task_store.update, task_id, status="executing", run_id=run_id)
@@ -543,7 +573,7 @@ async def _process_task(task_id: str):
 
 
 async def _send_callback(task: Task):
-    if not task.callback_url or not task.callback_url.startswith("https://"):
+    if not task.callback_url:
         return
     import aiohttp
     import hmac as _hmac

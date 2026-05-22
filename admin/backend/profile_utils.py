@@ -165,16 +165,16 @@ async def sync_profile_to_pod(
         config_content = yaml.dump(
             sanitized, default_flow_style=False, Dumper=yaml.SafeDumper,
         )
-        config_path = f"/opt/data/profiles/{profile.profile_name}/config.yaml"
+        config_path = f"/home/agent/.hermes/profiles/{profile.profile_name}/config.yaml"
         await k8s.write_file_to_pod(pod_name, config_path, config_content.encode("utf-8"))
 
         # Write SOUL.md
         if soul_md:
-            soul_path = f"/opt/data/profiles/{profile.profile_name}/SOUL.md"
+            soul_path = f"/home/agent/.hermes/profiles/{profile.profile_name}/SOUL.md"
             await k8s.write_file_to_pod(pod_name, soul_path, soul_md.encode("utf-8"))
 
         # Fix ownership of entire profile directory (mkdir -p creates dirs as root)
-        profile_dir = f"/opt/data/profiles/{shlex.quote(profile.profile_name)}"
+        profile_dir = f"/home/agent/.hermes/profiles/{shlex.quote(profile.profile_name)}"
         await k8s.run_command(pod_name, [
             "sh", "-c",
             f"chown -R $(id -u hermes):$(id -g hermes) {profile_dir}",
