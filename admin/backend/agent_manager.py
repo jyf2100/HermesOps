@@ -30,7 +30,7 @@ from config_manager import ConfigManager
 from constants import SECRET_PATTERNS, PROVIDER_URL_MAP, format_age, determine_api_mode, resolve_agent_provider, strip_v1_suffix, is_bearer_auth_endpoint
 from templates import deployment_name
 from database import AsyncSessionLocal
-from db_models import AgentMetadata, AgentProfile, AgentSkill, ReportIdRecord
+from db_models import AgentMetadata, AgentProfile, AgentSkill, ReportIdRecord, User
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = logging.getLogger(__name__)
@@ -172,6 +172,16 @@ class AgentManager:
                 key = all_results[2 * n_agents + i]
                 api_key_map[n] = self._mask_api_key(key) if key and not isinstance(key, Exception) else ""
 
+        # Fetch user→agent mapping from DB
+        user_map: dict[int, User] = {}
+        try:
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(select(User))
+                user_map = {u.agent_id: u for u in result.scalars().all() if u.agent_id is not None}
+        except Exception:
+            logger.debug("Failed to fetch user-agent mapping, owner info will be empty")
+
         # Second pass: build AgentSummary with pre-fetched resources
         agents = [
             AgentSummary(
@@ -186,6 +196,8 @@ class AgentManager:
                 restart_count=0,
                 created_at=created,
                 age_human=age_human,
+                owner_email=user_map[agent_num].email if agent_num in user_map else None,
+                owner_display_name=user_map[agent_num].display_name or None if agent_num in user_map else None,
             )
             for agent_num, name, status, created, age_human, display_name in agent_meta
         ]

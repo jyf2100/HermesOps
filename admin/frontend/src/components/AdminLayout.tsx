@@ -199,6 +199,25 @@ function IconPlus({ className }: { className?: string }) {
   );
 }
 
+function IconDispatch({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22 11 13 2 9z" />
+    </svg>
+  );
+}
+
 function LogoHermes({ className }: { className?: string }) {
   return (
     <img src="/admin/logo.jpg" alt="NewHermes" className={className} />
@@ -269,6 +288,7 @@ export function AdminLayout() {
   const navItems: NavItem[] = isUser
     ? [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
+        { to: "/my-tasks", label: t.myTasks || "My Tasks", icon: IconDispatch },
         { to: "/files", label: t.fileBrowser, icon: IconFolder },
         { to: "/chat", label: t.startChat, icon: IconChat },
         ...(webuiUrl ? [{ to: "#", label: t.navAgentPanel, icon: IconTerminal, href: webuiUrl }] : []),
@@ -277,6 +297,7 @@ export function AdminLayout() {
         { to: "/", label: t.navDashboard, icon: IconDashboard },
         { to: "/create", label: t.navCreateAgent, icon: IconPlus },
         { to: "/templates", label: t.templateNav, icon: IconTemplate },
+        { to: "/dispatch", label: t.dispatchTitle, icon: IconDispatch },
         { to: "/settings", label: t.navSettings, icon: IconSettings },
       ];
 
@@ -372,89 +393,6 @@ export function AdminLayout() {
             );
           })}
         </nav>
-
-        {/* Orchestrator section — admin only */}
-        {!isUser && (
-          <div className="mt-4 mx-3 rounded-lg bg-surface/40 border border-border-subtle p-3">
-            <p className="text-[11px] font-medium text-text-muted uppercase tracking-wider mb-2 px-2">
-              {t.orchestratorNav}
-            </p>
-            <NavLink
-              to="/orchestrator"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]",
-                  isActive
-                    ? "text-text-primary font-medium bg-accent-pink/10"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-[18px] h-[18px] shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                  </svg>
-                  <span>{t.orchestratorOverview}</span>
-                </>
-              )}
-            </NavLink>
-            <NavLink
-              to="/orchestrator/tasks/new"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors duration-150 relative focus-visible:outline-2 focus-visible:outline-accent-cyan focus-visible:outline-offset-[-2px]",
-                  isActive
-                    ? "text-text-primary font-medium bg-accent-pink/10"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface/50",
-                ].join(" ")
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-pink"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-[18px] h-[18px] shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span>{t.orchestratorNewTask}</span>
-                </>
-              )}
-            </NavLink>
-          </div>
-        )}
 
         {/* Bottom section */}
         <div className="mt-auto border-t border-border-subtle pt-3 px-3 pb-4 space-y-2 shrink-0">

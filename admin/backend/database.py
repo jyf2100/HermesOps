@@ -174,14 +174,122 @@ _MIGRATION_SQL: list[str] = [
     """,
     # CHECK constraint on profile_audit_log.action
     """
-    ALTER TABLE profile_audit_log DROP CONSTRAINT IF EXISTS ck_audit_action;
-    ALTER TABLE profile_audit_log ADD CONSTRAINT ck_audit_action CHECK (action IN ('create', 'update', 'delete'));
+    ALTER TABLE profile_audit_log DROP CONSTRAINT IF EXISTS ck_audit_action
+    """,
+    # Clean up rows with invalid action values before re-adding constraint
+    """
+    DELETE FROM profile_audit_log WHERE action NOT IN ('create', 'update', 'delete')
+    """,
+    """
+    ALTER TABLE profile_audit_log ADD CONSTRAINT ck_audit_action CHECK (action IN ('create', 'update', 'delete'))
+    """,
+    # --- Dispatch system tables ---
+    """
+    CREATE TABLE IF NOT EXISTS task_channels (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(64) UNIQUE NOT NULL,
+        display_name VARCHAR(100) NOT NULL,
+        description TEXT DEFAULT '',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS task_channel_subscriptions (
+        id SERIAL PRIMARY KEY,
+        channel_id BIGINT NOT NULL REFERENCES task_channels(id) ON DELETE CASCADE,
+        agent_number INTEGER NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_channel_agent UNIQUE (channel_id, agent_number)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_subscriptions_agent
+      ON task_channel_subscriptions (agent_number)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dispatch_tasks (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        prompt TEXT NOT NULL,
+        instructions TEXT DEFAULT '',
+        dispatch_type VARCHAR(20) NOT NULL,
+        channel_id BIGINT REFERENCES task_channels(id) ON DELETE SET NULL,
+        priority INTEGER DEFAULT 5,
+        timeout_seconds INTEGER DEFAULT 600,
+        confirm_timeout_hours INTEGER DEFAULT 24,
+        profile_hint VARCHAR(64),
+        status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+        created_by VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        result_summary TEXT,
+        CONSTRAINT ck_dispatch_type CHECK (dispatch_type IN ('channel', 'direct')),
+        CONSTRAINT ck_priority_range CHECK (priority BETWEEN 1 AND 10),
+        CONSTRAINT ck_timeout_positive CHECK (timeout_seconds > 0),
+        CONSTRAINT ck_confirm_timeout CHECK (confirm_timeout_hours BETWEEN 1 AND 168),
+        CONSTRAINT ck_task_status CHECK (status IN ('pending','dispatching','dispatched','partial','completed','failed','cancelled'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_dispatch_status_created
+      ON dispatch_tasks (status, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_dispatch_channel
+      ON dispatch_tasks (channel_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_dispatch_created_by
+      ON dispatch_tasks (created_by)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dispatch_assignments (
+        id SERIAL PRIMARY KEY,
+        task_id BIGINT NOT NULL REFERENCES dispatch_tasks(id) ON DELETE CASCADE,
+        agent_number INTEGER NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+        user_confirmed_at TIMESTAMPTZ,
+        profile_name VARCHAR(64),
+        profile_source VARCHAR(20),
+        orchestrator_task_id VARCHAR(128),
+        callback_token_hash VARCHAR(128),
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        result_summary TEXT,
+        result_data JSONB,
+        error_message TEXT,
+        confirm_deadline TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT uq_task_agent UNIQUE (task_id, agent_number),
+        CONSTRAINT ck_assignment_status CHECK (status IN ('pending','notified','confirmed','rejected','executing','completed','failed','expired')),
+        CONSTRAINT ck_profile_source CHECK (profile_source IS NULL OR profile_source IN ('user','auto','admin_hint'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_assignment_agent_status
+      ON dispatch_assignments (agent_number, status)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_assignment_task_id
+      ON dispatch_assignments (task_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_assignment_deadline
+      ON dispatch_assignments (confirm_deadline)
+      WHERE status IN ('pending','notified')
+    """,
+    # Dispatch: add kanban_task_id column for status sync
+    """
+    ALTER TABLE dispatch_assignments
+      ADD COLUMN IF NOT EXISTS kanban_task_id VARCHAR(128)
     """,
 ]
 
 _CLEANUP_SQL: list[str] = [
     "DELETE FROM skill_report_ids WHERE processed_at < NOW() - INTERVAL '7 days'",
     "DELETE FROM profile_audit_log WHERE created_at < NOW() - INTERVAL '90 days'",
+    "DELETE FROM dispatch_tasks WHERE created_at < NOW() - INTERVAL '90 days' AND status IN ('completed', 'failed', 'cancelled')",
 ]
 
 
@@ -189,16 +297,15 @@ async def _run_migrations() -> None:
     """Run idempotent migration SQL on every startup.
 
     Uses IF NOT EXISTS / ADD COLUMN IF NOT EXISTS so repeated execution is safe.
+    Each statement runs in its own transaction so one failure does not abort the rest.
     """
-    async with engine.begin() as conn:
-        for sql in _MIGRATION_SQL:
-            try:
+    for sql in _MIGRATION_SQL:
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text(sql))
-            except Exception as exc:
-                # Log but do not crash — individual migration failure should not
-                # prevent the service from starting.
-                logger.warning("Migration statement skipped: %s", exc)
-        logger.info("Database migrations applied successfully")
+        except Exception as exc:
+            logger.warning("Migration statement skipped: %s", exc)
+    logger.info("Database migrations applied successfully")
 
     # Cleanup stale report-id records
     try:

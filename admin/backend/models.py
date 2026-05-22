@@ -5,7 +5,7 @@ import re
 import socket
 from enum import Enum
 from typing import Annotated, Any, Literal, Optional
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from constants import PROVIDER_URL_MAP
 
@@ -149,6 +149,8 @@ class AgentSummary(BaseModel):
     created_at: Optional[datetime.datetime] = None
     age_human: str = ""
     health_ok: Optional[bool] = None
+    owner_email: Optional[str] = None
+    owner_display_name: Optional[str] = None
 
 
 class AgentListResponse(BaseModel):
@@ -614,3 +616,114 @@ class SkillReportResponse(BaseModel):
     status: str          # "accepted" | "unchanged"
     skills_count: int
     tags_aggregated: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Task Dispatch
+# ---------------------------------------------------------------------------
+
+class ChannelCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9_-]+$")
+    display_name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field("", max_length=500)
+
+
+class ChannelUpdateRequest(BaseModel):
+    display_name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)
+
+
+class ChannelResponse(BaseModel):
+    id: int
+    name: str
+    display_name: str
+    description: str
+    subscriber_count: int = 0
+    created_at: str = ""
+
+
+class SubscriptionRequest(BaseModel):
+    agent_numbers: list[int] = Field(..., min_length=1, max_length=100)
+
+
+class DispatchTaskRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    prompt: str = Field(..., min_length=1, max_length=50000)
+    instructions: str = Field("", max_length=10000)
+    dispatch_type: Literal["channel", "direct"]
+    channel_id: int | None = None
+    target_agents: list[int] | None = None
+    profile_hint: str | None = Field(None, max_length=64)
+    confirm_timeout_hours: int = Field(24, ge=1, le=168)
+    priority: int = Field(5, ge=1, le=10)
+    timeout_seconds: int = Field(600, ge=10, le=3600)
+
+    @model_validator(mode="after")
+    def validate_dispatch_fields(self) -> "DispatchTaskRequest":
+        if self.dispatch_type == "channel" and self.channel_id is None:
+            raise ValueError("channel_id is required when dispatch_type is 'channel'")
+        if self.dispatch_type == "direct" and not self.target_agents:
+            raise ValueError("target_agents is required when dispatch_type is 'direct'")
+        return self
+
+
+class DispatchTaskListParams(BaseModel):
+    status: str | None = None
+    agent_number: int | None = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+
+
+class DispatchAssignmentResponse(BaseModel):
+    id: int
+    agent_number: int
+    status: str
+    profile_name: str | None = None
+    profile_source: str | None = None
+    orchestrator_task_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    result_summary: str | None = None
+    error_message: str | None = None
+
+
+class DispatchTaskResponse(BaseModel):
+    id: int
+    title: str
+    dispatch_type: str
+    status: str
+    channel_id: int | None = None
+    priority: int = 5
+    created_by: str = ""
+    created_at: str = ""
+    result_summary: str | None = None
+    assignments: list[DispatchAssignmentResponse] = []
+
+
+class CallbackConfirmRequest(BaseModel):
+    assignment_id: int
+    callback_token: str = Field(..., max_length=128)
+    profile_name: str | None = Field(None, max_length=64)
+    profile_source: Literal["user", "auto", "admin_hint"] = "auto"
+
+
+class CallbackRejectRequest(BaseModel):
+    assignment_id: int
+    callback_token: str = Field(..., max_length=128)
+
+
+class CallbackResultRequest(BaseModel):
+    assignment_id: int
+    callback_token: str = Field(..., max_length=128)
+    profile_name: str | None = Field(None, max_length=64)
+    profile_source: Literal["user", "auto", "admin_hint"] | None = None
+    result_summary: str = Field(..., max_length=10000)
+    result_data: dict = Field(default_factory=dict)
+    error: str | None = Field(None, max_length=2000)
+
+
+class OrchestratorCallbackRequest(BaseModel):
+    """Payload sent by orchestrator _send_callback on task completion."""
+    task_id: str
+    status: str
+    result: dict | None = None

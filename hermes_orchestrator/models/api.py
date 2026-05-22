@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ipaddress
 import re
-import socket
 from enum import Enum
 from urllib.parse import urlparse
 
@@ -89,24 +87,35 @@ class TaskSubmitRequest(BaseModel):
                 )
         return v
 
+    target_agent_id: str | None = Field(
+        None,
+        max_length=128,
+        description="When set, skip routing and assign to this specific agent.",
+    )
+
+    @field_validator("target_agent_id")
+    @classmethod
+    def validate_target_agent_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not re.match(r'^[a-z0-9][a-z0-9-]*$', v):
+            raise ValueError(
+                "target_agent_id must be a valid deployment name prefix "
+                "(lowercase alphanumeric and hyphens, e.g. hermes-gateway-1)"
+            )
+        return v
+
     @field_validator("callback_url")
     @classmethod
     def validate_callback_url(cls, v: str | None) -> str | None:
         if v is None:
             return v
         parsed = urlparse(v)
-        if parsed.scheme != "https":
-            raise ValueError("callback_url must use HTTPS")
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("callback_url must use HTTP or HTTPS")
         hostname = parsed.hostname
         if not hostname:
             raise ValueError("callback_url must have a hostname")
-        try:
-            for addr in set(socket.getaddrinfo(hostname, None)):
-                ip = ipaddress.ip_address(addr[4][0])
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                    raise ValueError("callback_url must resolve to a public IP")
-        except socket.gaierror:
-            raise ValueError("callback_url hostname does not resolve")
         return v
 
 

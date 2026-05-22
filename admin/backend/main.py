@@ -10,6 +10,7 @@ import os
 import re
 import secrets as _secrets
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -264,6 +265,107 @@ internal_auth = Depends(_verify_internal_token)
 
 
 # ---------------------------------------------------------------------------
+# Dispatch routes — inject auth dependencies before including
+# ---------------------------------------------------------------------------
+from dispatch_routes import router as dispatch_router
+from fastapi.routing import APIRoute
+for route in dispatch_router.routes:
+    if isinstance(route, APIRoute):
+        if "/callback/" in route.path:
+            pass  # callback routes use callback_token auth in the handler
+        elif "/my-tasks" in route.path:
+            route.dependencies.append(auth)  # user mode: auth only, no admin_only
+        else:
+            route.dependencies.append(auth)
+            route.dependencies.append(admin_only)
+app.include_router(dispatch_router)
+
+# Orchestrator state for dispatch routes
+app.state.orchestrator_url = ORCHESTRATOR_INTERNAL_URL
+app.state.orchestrator_api_key = ORCHESTRATOR_API_KEY
+app.state.orch_client = httpx.AsyncClient(timeout=30.0)
+
+
+# ---------------------------------------------------------------------------
+# Dispatch background tasks (timeout scanner + orphan recovery)
+# ---------------------------------------------------------------------------
+from db_models import DispatchTask, DispatchAssignment
+
+
+async def _dispatch_timeout_scanner():
+    """Periodically expire dispatch assignments past their confirm_deadline."""
+    while True:
+        await asyncio.sleep(300)  # every 5 minutes
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(DispatchAssignment).where(
+                        DispatchAssignment.status == "pending",
+                        DispatchAssignment.confirm_deadline < datetime.now(timezone.utc),
+                    )
+                )
+                expired = result.scalars().all()
+                for a in expired:
+                    a.status = "expired"
+                    a.error_message = "Confirm deadline exceeded"
+                if expired:
+                    # Update parent task statuses
+                    affected_task_ids = {a.task_id for a in expired}
+                    for tid in affected_task_ids:
+                        await _rollup_dispatch_task_status(session, tid)
+                    await session.commit()
+                    logger.info("Dispatch timeout scanner expired %d assignments across %d tasks", len(expired), len(affected_task_ids))
+        except Exception as exc:
+            logger.warning("Dispatch timeout scanner error: %s", exc)
+
+
+async def _rollup_dispatch_task_status(session, task_id: int):
+    """Check all assignments of a dispatch task and update its status if all terminal."""
+    task = await session.get(DispatchTask, task_id)
+    if not task:
+        return
+    result = await session.execute(
+        select(DispatchAssignment.status).where(DispatchAssignment.task_id == task_id)
+    )
+    statuses = [row[0] for row in result.all()]
+    if not statuses:
+        return
+    terminal = {"completed", "failed", "rejected", "expired", "cancelled"}
+    if all(s in terminal for s in statuses):
+        completed = sum(1 for s in statuses if s == "completed")
+        task.status = "completed" if completed > 0 else "failed"
+        task.result_summary = f"{completed}/{len(statuses)} completed"
+        task.updated_at = datetime.now(timezone.utc)
+
+
+async def _recover_orphaned_dispatches():
+    """On startup, mark assignments left in 'pending'/'notified' without orchestrator_task_id as failed."""
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(DispatchAssignment).where(
+                    DispatchAssignment.status.in_(["pending", "notified"]),
+                    DispatchAssignment.orchestrator_task_id.is_(None),
+                )
+            )
+            orphans = result.scalars().all()
+            for a in orphans:
+                a.status = "failed"
+                a.error_message = "Orphaned assignment recovered on startup"
+            if orphans:
+                # Also update parent tasks
+                task_ids = {a.task_id for a in orphans}
+                for tid in task_ids:
+                    task = await session.get(DispatchTask, tid)
+                    if task and task.status == "dispatching":
+                        task.status = "partial"
+                await session.commit()
+                logger.info("Recovered %d orphaned dispatch assignments", len(orphans))
+    except Exception as exc:
+        logger.warning("Orphan dispatch recovery error: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # Health endpoint
 # ---------------------------------------------------------------------------
 @app.get(f"{API_PREFIX}/health", tags=["health"])
@@ -311,6 +413,8 @@ async def _startup_cleanup():
     asyncio.create_task(_sweep())
     # P2.9: Start background sync retry
     asyncio.create_task(_retry_failed_syncs())
+    # NOTE: _dispatch_timeout_scanner moved to _warn_no_auth (after init_db)
+    # because it queries dispatch_assignments which may not have latest columns
 
 
 
@@ -384,11 +488,32 @@ async def _warn_no_auth():
     except Exception as e:
         logger.warning("Database init skipped: %s", e)
 
+    # Dispatch: recover kanban pollers for in-progress assignments
+    # Must run AFTER init_db to ensure kanban_task_id column exists
+    try:
+        from dispatch_routes import recover_kanban_pollers
+        await recover_kanban_pollers()
+    except Exception as e:
+        logger.warning("Kanban poller recovery skipped: %s", e)
+
+    # Dispatch: recover orphaned assignments (must be after init_db for same reason)
+    try:
+        await _recover_orphaned_dispatches()
+    except Exception as e:
+        logger.warning("Orphan dispatch recovery skipped: %s", e)
+
+    # Dispatch: start timeout scanner (must be after init_db)
+    asyncio.create_task(_dispatch_timeout_scanner())
+
 
 @app.on_event("shutdown")
 async def _shutdown_kanban():
     from kanban_routes import close_dashboard_clients
     await close_dashboard_clients()
+    # Close shared orchestrator httpx client
+    orch_client = getattr(app.state, "orch_client", None)
+    if orch_client is not None:
+        await orch_client.aclose()
 
 
 def _verify_sse_token(agent_id: int, token: str) -> bool:

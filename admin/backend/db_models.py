@@ -1,7 +1,7 @@
 """ORM models for Hermes Admin user management."""
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, desc, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -154,3 +154,97 @@ class ProfileAuditLog(Base):
     new_values = Column(JSONB, nullable=True)
     changed_by = Column(String(64), default="admin-ui")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskChannel(Base):
+    __tablename__ = "task_channels"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    name = Column(String(64), unique=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    description = Column(Text, default="")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskChannelSubscription(Base):
+    __tablename__ = "task_channel_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "agent_number", name="uq_channel_agent"),
+        Index("ix_subscriptions_agent", "agent_number"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    channel_id = Column(BigInteger, ForeignKey("task_channels.id", ondelete="CASCADE"), nullable=False)
+    agent_number = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DispatchTask(Base):
+    __tablename__ = "dispatch_tasks"
+    __table_args__ = (
+        CheckConstraint("dispatch_type IN ('channel', 'direct')", name="ck_dispatch_type"),
+        CheckConstraint("priority BETWEEN 1 AND 10", name="ck_priority_range"),
+        CheckConstraint("timeout_seconds > 0", name="ck_timeout_positive"),
+        CheckConstraint("confirm_timeout_hours BETWEEN 1 AND 168", name="ck_confirm_timeout"),
+        CheckConstraint(
+            "status IN ('pending','dispatching','dispatched','partial','completed','failed','cancelled')",
+            name="ck_task_status",
+        ),
+        Index("ix_dispatch_status_created", "status", desc("created_at")),
+        Index("ix_dispatch_channel", "channel_id"),
+        Index("ix_dispatch_created_by", "created_by"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    prompt = Column(Text, nullable=False)
+    instructions = Column(Text, default="")
+    dispatch_type = Column(String(20), nullable=False)
+    channel_id = Column(BigInteger, ForeignKey("task_channels.id", ondelete="SET NULL"), nullable=True)
+    priority = Column(Integer, default=5)
+    timeout_seconds = Column(Integer, default=600)
+    confirm_timeout_hours = Column(Integer, default=24)
+    profile_hint = Column(String(64), nullable=True)
+    status = Column(String(20), default="pending", server_default="pending", nullable=False)
+    created_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+    result_summary = Column(Text, nullable=True)
+
+
+class DispatchAssignment(Base):
+    __tablename__ = "dispatch_assignments"
+    __table_args__ = (
+        UniqueConstraint("task_id", "agent_number", name="uq_task_agent"),
+        Index("ix_assignment_agent_status", "agent_number", "status"),
+        Index("ix_assignment_task_id", "task_id"),
+        Index("ix_assignment_deadline", "confirm_deadline",
+              postgresql_where=text("status IN ('pending','notified')")),
+        CheckConstraint(
+            "status IN ('pending','notified','confirmed','rejected','executing','completed','failed','expired')",
+            name="ck_assignment_status",
+        ),
+        CheckConstraint(
+            "profile_source IS NULL OR profile_source IN ('user','auto','admin_hint')",
+            name="ck_profile_source",
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    task_id = Column(BigInteger, ForeignKey("dispatch_tasks.id", ondelete="CASCADE"), nullable=False)
+    agent_number = Column(Integer, nullable=False)
+    status = Column(String(20), default="pending", server_default="pending", nullable=False)
+    user_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    profile_name = Column(String(64), nullable=True)
+    profile_source = Column(String(20), nullable=True)
+    orchestrator_task_id = Column(String(128), nullable=True)
+    kanban_task_id = Column(String(128), nullable=True)
+    callback_token_hash = Column(String(128), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    result_summary = Column(Text, nullable=True)
+    result_data = Column(JSONB, nullable=True)
+    error_message = Column(Text, nullable=True)
+    confirm_deadline = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -59,6 +59,7 @@ class Task:
     domain: str = "generalist"
     preferred_tags: list[str] = field(default_factory=list)  # Soft-constraint tags merged into Jaccard scoring
     routing_info: RoutingInfo | None = None
+    target_agent_id: str | None = None
 
     def __post_init__(self):
         if self.updated_at == 0.0:
