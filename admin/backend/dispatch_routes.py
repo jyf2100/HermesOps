@@ -549,7 +549,7 @@ NAMESPACE = "hermes-agent"
 
 
 async def _get_kanban_auth(agent_number: int) -> tuple[str, str] | None:
-    """Get (webui_url, api_key) for an agent's kanban API, with TTL cache."""
+    """Get (webui_url, jwt_token) for an agent's kanban API, with TTL cache."""
     now = time.monotonic()
     cached = _kanban_auth_cache.get(agent_number)
     if cached and now - cached[0] < _AUTH_CACHE_TTL:
@@ -567,9 +567,29 @@ async def _get_kanban_auth(agent_number: int) -> tuple[str, str] | None:
         if not secret or not secret.data or "api_key" not in secret.data:
             return None
         api_key = base64.b64decode(secret.data["api_key"]).decode()
-        result = (webui_url, api_key)
-        _kanban_auth_cache[agent_number] = (now, result)
-        return result
+
+        # Try JWT login first (v0.5.33+ with auth enabled).
+        # Login also bootstraps the default admin user on first call.
+        # If AUTH_DISABLED=1, login fails but API middleware is passthrough,
+        # so fall back to using AUTH_TOKEN directly (or any token).
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            login_resp = await client.post(
+                f"{webui_url}/api/auth/login",
+                json={"username": "admin", "password": "123456"},
+            )
+            if login_resp.status_code == 200:
+                jwt_token = login_resp.json().get("token", "")
+                if jwt_token:
+                    result = (webui_url, jwt_token)
+                    _kanban_auth_cache[agent_number] = (now, result)
+                    return result
+                logger.warning("Login succeeded but no token for agent %s", agent_number)
+            else:
+                logger.info("Login failed for agent %s (%s), using AUTH_TOKEN fallback",
+                            agent_number, login_resp.text[:100])
+                result = (webui_url, api_key)
+                _kanban_auth_cache[agent_number] = (now, result)
+                return result
     except Exception as exc:
         logger.warning("Failed to get kanban auth for agent %s: %s", agent_number, exc)
         return None
@@ -583,10 +603,10 @@ async def _kanban_create_and_dispatch(agent_number: int, title: str, body: str) 
     auth = await _get_kanban_auth(agent_number)
     if not auth:
         return None
-    webui_url, api_key = auth
+    webui_url, jwt_token = auth
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {jwt_token}",
     }
 
     try:
@@ -641,8 +661,8 @@ async def _poll_kanban_status(agent_number: int, kanban_task_id: str, assignment
         auth = await _get_kanban_auth(agent_number)
         if not auth:
             return
-        webui_url, api_key = auth
-        headers = {"Authorization": f"Bearer {api_key}"}
+        webui_url, jwt_token = auth
+        headers = {"Authorization": f"Bearer {jwt_token}"}
         max_polls = 120  # ~20 minutes max (120 * 10s)
         consecutive_errors = 0
 
@@ -768,18 +788,17 @@ def _assignment_to_dict(a: DispatchAssignment) -> dict:
 
 @router.get("/my-tasks")
 async def my_tasks(request: Request):
-    """List dispatched tasks for the current user's agent (user mode)."""
+    """List dispatched tasks for the current user's agent (user mode).
+
+    In admin mode (no agent_id), returns recent assignments for all agents.
+    """
     agent_number = getattr(request.state, "agent_id", None)
-    if agent_number is None:
-        raise HTTPException(403, "agent_id required")
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(DispatchAssignment)
-            .where(DispatchAssignment.agent_number == agent_number)
-            .order_by(desc(DispatchAssignment.id))
-            .limit(50)
-        )
+        q = select(DispatchAssignment).order_by(desc(DispatchAssignment.id)).limit(50)
+        if agent_number is not None:
+            q = q.where(DispatchAssignment.agent_number == agent_number)
+        result = await session.execute(q)
         assignments = result.scalars().all()
         if not assignments:
             return {"tasks": []}

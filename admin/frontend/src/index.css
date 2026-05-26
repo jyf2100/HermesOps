@@ -70,34 +70,6 @@
   --color-bar-track: rgba(0, 0, 0, 0.08);
 }
 
-/* ── Cyberpunk theme override ── */
-[data-theme="cyberpunk"] {
-  --color-background: #0d0221;
-  --color-surface: #1a0a3e;
-  --color-surface-secondary: oklch(0.16 0.02 270);
-  --color-surface-tertiary: oklch(0.13 0.02 270);
-  --color-surface-elevated: #2d1b69;
-  --color-sidebar-bg: #120838;
-  --color-terminal: #080815;
-
-  --color-text-primary: #d1f7ff;
-  --color-text-secondary: #a8a8c0;
-
-  --color-accent-pink: #ff2a6d;
-  --color-accent-cyan: #05d9e8;
-  --color-accent-glow: #7b2d8e;
-
-  --color-bar-track: rgba(123, 45, 142, 0.2);
-
-  --color-success: #00ff41;
-  --color-warning: #f5a623;
-  --color-destructive: #ff2a6d;
-
-  --color-border: rgba(123, 45, 142, 0.3);
-  --color-border-subtle: rgba(123, 45, 142, 0.15);
-  --color-border-cyan: rgba(5, 217, 232, 0.3);
-}
-
 /* ── Base ── */
 body {
   font-family: var(--font-body);
@@ -106,14 +78,6 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Cyberpunk body gradient */
-[data-theme="cyberpunk"] body {
-  background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(123, 45, 142, 0.15), transparent 70%),
-    radial-gradient(ellipse at 80% 20%, rgba(5, 217, 232, 0.08), transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(255, 42, 109, 0.06), transparent 60%);
 }
 
 /* ── Scrollbar ── */
@@ -238,43 +202,6 @@ body {
 
 .glass-heavy {
   background: var(--color-surface-secondary);
-}
-
-[data-theme="cyberpunk"] .glass {
-  background: rgba(26, 10, 62, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-[data-theme="cyberpunk"] .glass-heavy {
-  background: rgba(26, 10, 62, 0.4);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-
-/* ── Glow effects — neutralized in monochrome ── */
-.glow-pink {
-  box-shadow: none;
-}
-
-.glow-cyan {
-  box-shadow: none;
-}
-
-.glow-pink-text {
-  text-shadow: none;
-}
-
-[data-theme="cyberpunk"] .glow-pink {
-  box-shadow: 0 0 20px rgba(255, 42, 109, 0.3);
-}
-
-[data-theme="cyberpunk"] .glow-cyan {
-  box-shadow: 0 0 12px rgba(5, 217, 232, 0.3);
-}
-
-[data-theme="cyberpunk"] .glow-pink-text {
-  text-shadow: 0 0 20px rgba(255, 42, 109, 0.4);
 }
 
 /* ── prefers-reduced-motion ── */

@@ -69,7 +69,7 @@ class AgentManager:
         base_url = self._build_webui_url(agent_id)
         api_key = await self._get_agent_api_key(agent_id)
         if api_key:
-            return f"{base_url}/?token={api_key}"
+            return f"{base_url}/#/?token={api_key}"
         return base_url
 
     async def _get_agent_api_key(self, agent_num: int) -> str | None:

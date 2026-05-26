@@ -180,7 +180,7 @@ export function AgentCard({ agent, onActionDone }: AgentCardProps) {
           <div className="flex items-center gap-2 min-w-0">
             <span
               className={`inline-block h-2.5 w-2.5 rounded-full flex-shrink-0 ${statusDotColor(agent.status)} ${
-                isRunning ? "animate-status-pulse glow-cyan" : ""
+                isRunning ? "animate-status-pulse" : ""
               }`}
             />
             <span className="text-xs text-text-secondary">

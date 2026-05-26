@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type Theme = "cyberpunk" | "dark" | "light";
+export type Theme = "dark" | "light";
 
-const THEME_ORDER: Theme[] = ["cyberpunk", "dark", "light"];
+const THEME_ORDER: Theme[] = ["dark", "light"];
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem("admin_theme");
-    if (saved === "cyberpunk" || saved === "dark" || saved === "light") return saved;
-    return "cyberpunk";
+    if (saved === "dark" || saved === "light") return saved;
+    return "dark";
   });
 
   useEffect(() => {
