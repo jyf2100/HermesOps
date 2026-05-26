@@ -869,3 +869,171 @@ export const mockMyDispatchTasks = {
 };
 
 export const mockEmptyMyTasks = { tasks: [] };
+
+// -- Monitoring --
+
+export const mockMonitorSummary = {
+  cluster: mockClusterStatus,
+  anomaly_count: 2,
+  anomaly_agents: [
+    {
+      id: 1,
+      agent_number: 1,
+      agent_name: "hermes-gateway-1",
+      anomaly_type: "health_down",
+      severity: "critical" as const,
+      title: "Agent health check failed",
+      detail: { reason: "gateway returned 503" },
+      status: "active" as const,
+      created_at: "2026-05-26T09:00:00Z",
+      updated_at: "2026-05-26T09:30:00Z",
+      resolved_at: null,
+      cpu_usage_pct: 85.3,
+      memory_usage_pct: 72.1,
+      restart_count: 3,
+      pod_phase: "Running",
+      last_event_summary: "Liveness probe failed",
+    },
+    {
+      id: 2,
+      agent_number: 3,
+      agent_name: "hermes-gateway-3",
+      anomaly_type: "high_cpu,high_memory",
+      severity: "warning" as const,
+      title: "High resource usage",
+      detail: { cpu: 85.3, memory: 72.1 },
+      status: "active" as const,
+      created_at: "2026-05-26T08:00:00Z",
+      updated_at: "2026-05-26T09:00:00Z",
+      resolved_at: null,
+      cpu_usage_pct: 91.2,
+      memory_usage_pct: 78.5,
+      restart_count: 0,
+      pod_phase: "Running",
+      last_event_summary: "OOM approaching limit",
+    },
+  ],
+  resource_agents: [
+    { agent_number: 1, agent_name: "hermes-gateway-1", status: "running", cpu_usage_pct: 85.3, memory_usage_pct: 72.1, cpu_cores: 0.85, memory_bytes: 773094113 },
+    { agent_number: 2, agent_name: "hermes-gateway-2", status: "stopped", cpu_usage_pct: null, memory_usage_pct: null, cpu_cores: null, memory_bytes: null },
+    { agent_number: 3, agent_name: "hermes-gateway-3", status: "running", cpu_usage_pct: 91.2, memory_usage_pct: 78.5, cpu_cores: 0.91, memory_bytes: 843244298 },
+  ],
+  last_inspection_at: "2026-05-26T08:00:00Z",
+  inspection_healthy: false,
+};
+
+export const mockMonitorSummaryHealthy = {
+  ...mockMonitorSummary,
+  anomaly_count: 0,
+  anomaly_agents: [],
+  inspection_healthy: true,
+};
+
+export const mockMonitorSummaryEmpty = {
+  cluster: null,
+  anomaly_count: 0,
+  anomaly_agents: [],
+  resource_agents: [],
+  last_inspection_at: null,
+  inspection_healthy: true,
+};
+
+export const mockAnomalyItems = [
+  {
+    id: 1,
+    agent_number: 1,
+    anomaly_type: "health_down",
+    severity: "critical" as const,
+    title: "Agent health check failed",
+    detail: { reason: "gateway returned 503" },
+    status: "active" as const,
+    created_at: "2026-05-26T09:00:00Z",
+    updated_at: "2026-05-26T09:30:00Z",
+    resolved_at: null,
+  },
+  {
+    id: 2,
+    agent_number: 3,
+    anomaly_type: "high_cpu",
+    severity: "warning" as const,
+    title: "High CPU usage",
+    detail: { cpu: 91.2 },
+    status: "active" as const,
+    created_at: "2026-05-26T08:00:00Z",
+    updated_at: "2026-05-26T09:00:00Z",
+    resolved_at: null,
+  },
+  {
+    id: 3,
+    agent_number: 3,
+    anomaly_type: "high_memory",
+    severity: "warning" as const,
+    title: "High Memory usage",
+    detail: { memory: 78.5 },
+    status: "active" as const,
+    created_at: "2026-05-26T08:05:00Z",
+    updated_at: "2026-05-26T09:05:00Z",
+    resolved_at: null,
+  },
+];
+
+export const mockUpdatedAnomaly = {
+  id: 1,
+  agent_number: 1,
+  anomaly_type: "health_down",
+  severity: "critical" as const,
+  title: "Agent health check failed",
+  detail: { reason: "gateway returned 503" },
+  status: "acknowledged" as const,
+  created_at: "2026-05-26T09:00:00Z",
+  updated_at: "2026-05-26T09:35:00Z",
+  resolved_at: null,
+};
+
+export const mockInspectionBatchResponse = {
+  batch_id: "batch-20260526-001",
+  agent_count: 3,
+  created_at: "2026-05-26T08:00:00Z",
+  results: [
+    { agent_number: 1, agent_name: "hermes-gateway-1", check_name: "health_check", status: "failed" as const, detail: "Gateway returned 503" },
+    { agent_number: 1, agent_name: "hermes-gateway-1", check_name: "pod_status", status: "passed" as const, detail: "Pod is Running" },
+    { agent_number: 1, agent_name: "hermes-gateway-1", check_name: "resource_usage", status: "warning" as const, detail: "CPU 85.3%, Memory 72.1%" },
+    { agent_number: 2, agent_name: "hermes-gateway-2", check_name: "health_check", status: "skipped" as const, detail: "Agent is stopped" },
+    { agent_number: 2, agent_name: "hermes-gateway-2", check_name: "pod_status", status: "skipped" as const, detail: "Agent is stopped" },
+    { agent_number: 3, agent_name: "hermes-gateway-3", check_name: "health_check", status: "passed" as const, detail: "Gateway healthy" },
+    { agent_number: 3, agent_name: "hermes-gateway-3", check_name: "pod_status", status: "passed" as const, detail: "Pod is Running" },
+    { agent_number: 3, agent_name: "hermes-gateway-3", check_name: "resource_usage", status: "warning" as const, detail: "CPU 91.2%, Memory 78.5%" },
+  ],
+};
+
+export const mockTriggerInspectionResponse = {
+  batch_id: "batch-20260526-002",
+  agent_count: 3,
+  created_at: "2026-05-26T10:00:00Z",
+  results: [],
+};
+
+// Generate 25 inspection results for pagination testing
+export const mockInspectionResultsPaged: typeof mockInspectionBatchResponse.results = [];
+for (let i = 1; i <= 25; i++) {
+  const statuses = ["passed", "warning", "failed", "skipped"] as const;
+  mockInspectionResultsPaged.push(
+    { agent_number: i, agent_name: `hermes-gateway-${i}`, check_name: "health_check", status: statuses[i % 4], detail: `Check result for agent ${i}` },
+    { agent_number: i, agent_name: `hermes-gateway-${i}`, check_name: "pod_status", status: i % 3 === 0 ? "passed" as const : "warning" as const, detail: `Pod status for agent ${i}` },
+  );
+}
+
+export const mockInspectionBatchPaged = {
+  batch_id: "batch-paged-001",
+  agent_count: 25,
+  created_at: "2026-05-26T10:00:00Z",
+  results: mockInspectionResultsPaged,
+};
+
+export const mockInspectionHistory = {
+  items: [
+    { batch_id: "batch-20260526-001", agent_count: 3, created_at: "2026-05-26T08:00:00Z", anomaly_count: 2 },
+    { batch_id: "batch-20260525-001", agent_count: 3, created_at: "2026-05-25T08:00:00Z", anomaly_count: 0 },
+  ],
+  total: 2,
+};
