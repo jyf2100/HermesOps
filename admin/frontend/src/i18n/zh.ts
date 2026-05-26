@@ -914,6 +914,55 @@ export interface Translations {
   dispatchConfirmSuccess: string;
   dispatchRejectSuccess: string;
   dispatchCompletedAt: string;
+
+  // Monitoring
+  navMonitoring: string;
+  monitorTitle: string;
+  monitorOverview: string;
+  monitorAnomaly: string;
+  monitorResources: string;
+  monitorInspection: string;
+  monitorRunInspection: string;
+  monitorAllHealthy: string;
+  monitorNoInspection: string;
+  monitorAnomalyCount: string;
+  monitorAnomalyNeedsAttention: string;
+  monitorInspectionRunning: string;
+  monitorInspectionTriggered: string;
+  monitorInspectionTriggerFailed: string;
+  monitorAcknowledge: string;
+  monitorIgnore: string;
+  monitorAcknowledged: string;
+  monitorIgnored: string;
+  monitorViewDetails: string;
+  monitorLastCheck: string;
+  monitorReasons: string;
+  monitorLastEvent: string;
+  monitorResourceUsage: string;
+  monitorStopped: string;
+  monitorAgent: string;
+  monitorCheck: string;
+  monitorStatus: string;
+  monitorDetail: string;
+  monitorPassed: string;
+  monitorWarning: string;
+  monitorFailed: string;
+  monitorSkipped: string;
+  monitorPrevious: string;
+  monitorNext: string;
+  monitorPage: string;
+  monitorNoData: string;
+  monitorHealthyBadge: string;
+  monitorDegradedBadge: string;
+  monitorLastInspection: string;
+  monitorCpu: string;
+  monitorMem: string;
+  monitorRestarts: string;
+  monitorAnomalyHealthDown: string;
+  monitorAnomalyPodNotRunning: string;
+  monitorAnomalyHighCpu: string;
+  monitorAnomalyHighMemory: string;
+  monitorAnomalyHighRestarts: string;
 }
 
 export const zh: Translations = {
@@ -1857,4 +1906,53 @@ export const zh: Translations = {
   dispatchConfirmSuccess: "任务已确认",
   dispatchRejectSuccess: "任务已拒绝",
   dispatchCompletedAt: "完成时间",
+
+  // Monitoring
+  navMonitoring: "监控",
+  monitorTitle: "监控中心",
+  monitorOverview: "概览",
+  monitorAnomaly: "异常",
+  monitorResources: "资源水位",
+  monitorInspection: "巡检",
+  monitorRunInspection: "立即巡检",
+  monitorAllHealthy: "所有 Agent 运行正常",
+  monitorNoInspection: "暂无巡检数据",
+  monitorAnomalyCount: "{n} 个异常",
+  monitorAnomalyNeedsAttention: "{n} 个 Agent 需要关注",
+  monitorInspectionRunning: "巡检进行中...",
+  monitorInspectionTriggered: "巡检已触发",
+  monitorInspectionTriggerFailed: "触发巡检失败",
+  monitorAcknowledge: "确认",
+  monitorIgnore: "忽略",
+  monitorAcknowledged: "已确认",
+  monitorIgnored: "已忽略",
+  monitorViewDetails: "查看详情",
+  monitorLastCheck: "上次检查",
+  monitorReasons: "异常原因",
+  monitorLastEvent: "最近事件",
+  monitorResourceUsage: "资源使用",
+  monitorStopped: "已停止",
+  monitorAgent: "Agent",
+  monitorCheck: "检查项",
+  monitorStatus: "状态",
+  monitorDetail: "详情",
+  monitorPassed: "通过",
+  monitorWarning: "警告",
+  monitorFailed: "失败",
+  monitorSkipped: "跳过",
+  monitorPrevious: "上一页",
+  monitorNext: "下一页",
+  monitorPage: "第 {page} / {total} 页",
+  monitorNoData: "暂无数据",
+  monitorHealthyBadge: "巡检正常",
+  monitorDegradedBadge: "巡检降级",
+  monitorLastInspection: "上次巡检",
+  monitorCpu: "CPU",
+  monitorMem: "内存",
+  monitorRestarts: "重启",
+  monitorAnomalyHealthDown: "Health Down",
+  monitorAnomalyPodNotRunning: "Pod Not Running",
+  monitorAnomalyHighCpu: "High CPU",
+  monitorAnomalyHighMemory: "High Memory",
+  monitorAnomalyHighRestarts: "High Restarts",
 };

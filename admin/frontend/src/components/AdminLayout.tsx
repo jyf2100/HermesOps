@@ -218,6 +218,24 @@ function IconDispatch({ className }: { className?: string }) {
   );
 }
 
+function IconMonitor({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M3 12h2l3-9 4 18 3-9h2" />
+    </svg>
+  );
+}
+
 function LogoHermes({ className }: { className?: string }) {
   return (
     <img src="/admin/logo.jpg" alt="NewHermes" className={className} />
@@ -294,6 +312,7 @@ export function AdminLayout() {
       ]
     : [
         { to: "/", label: t.navDashboard, icon: IconDashboard },
+        { to: "/monitoring", label: t.navMonitoring, icon: IconMonitor },
         { to: "/create", label: t.navCreateAgent, icon: IconPlus },
         { to: "/templates", label: t.templateNav, icon: IconTemplate },
         { to: "/dispatch", label: t.dispatchTitle, icon: IconDispatch },
@@ -319,9 +338,9 @@ export function AdminLayout() {
     window.location.href = "/admin/";
   }
 
-  // In user mode, redirect /settings and /create to /
+  // In user mode, redirect /settings and /create and /monitoring to /
   if (isUser) {
-    if (location.pathname === "/settings" || location.pathname === "/create") {
+    if (location.pathname === "/settings" || location.pathname === "/create" || location.pathname === "/monitoring") {
       return <Navigate to="/" replace />;
     }
   }

@@ -10,6 +10,7 @@ import { FileBrowserPage } from "./pages/FileBrowserPage";
 import { TemplateListPage } from "./pages/TemplateListPage";
 import { TaskDispatchPage } from "./pages/TaskDispatchPage";
 import { MyTasksPage } from "./pages/MyTasksPage";
+import { MonitoringPage } from "./pages/MonitoringPage";
 import { setAdminKey, getAuthMode } from "./lib/admin-api";
 import { useEffect } from "react";
 
@@ -27,6 +28,7 @@ function App() {
       <Routes>
         <Route element={<AdminLayout />}>
           <Route path="/" element={<DashboardPage />} />
+          <Route path="/monitoring" element={<MonitoringPage />} />
           <Route path="/agents/:id" element={<AgentDetailPage />} />
           <Route path="/create" element={<CreateAgentPage />} />
           <Route path="/chat" element={<ChatPage />} />

@@ -727,3 +727,74 @@ class OrchestratorCallbackRequest(BaseModel):
     task_id: str
     status: str
     result: dict | None = None
+
+
+# ---------------------------------------------------------------------------
+# Monitoring / Inspection
+# ---------------------------------------------------------------------------
+
+class InspectionCheckResult(BaseModel):
+    agent_number: int
+    health_ok: bool | None = None
+    health_latency_ms: float | None = None
+    pod_phase: str | None = None
+    pod_restart_count: int = 0
+    cpu_usage_pct: float | None = None
+    memory_usage_pct: float | None = None
+    # Fix #13: raw resource fields for historical analysis
+    cpu_cores: float | None = None
+    cpu_limit_cores: float | None = None
+    memory_bytes: int | None = None
+    memory_limit_bytes: int | None = None
+    error_message: str | None = None
+
+
+class InspectionBatchResponse(BaseModel):
+    batch_id: str
+    checked_count: int
+    anomaly_count: int
+    results: list[InspectionCheckResult]
+    created_at: datetime.datetime
+
+
+class InspectionTrendPoint(BaseModel):
+    created_at: datetime.datetime
+    avg_cpu_usage_pct: float | None = None
+    avg_memory_usage_pct: float | None = None
+    health_ok: bool | None = None
+
+
+class InspectionTrendResponse(BaseModel):
+    agent_number: int
+    points: list[InspectionTrendPoint]
+
+
+class AnomalyItem(BaseModel):
+    id: int
+    agent_number: int
+    anomaly_type: str
+    severity: str
+    title: str
+    detail: dict = {}
+    status: str
+    created_at: datetime.datetime
+    resolved_at: datetime.datetime | None = None
+
+
+class AnomalyListResponse(BaseModel):
+    anomalies: list[AnomalyItem]
+    total: int
+
+
+class AnomalyUpdateRequest(BaseModel):
+    status: Literal["acknowledged", "ignored"]
+
+
+class MonitorSummary(BaseModel):
+    healthy_count: int
+    anomaly_count: int
+    total_agents: int
+    running_agents: int
+    last_inspection_at: datetime.datetime | None = None
+    inspection_healthy: bool = True
+    agent_health_summary: dict  # {running, stopped, failed, degraded}

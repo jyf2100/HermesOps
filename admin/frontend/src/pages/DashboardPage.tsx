@@ -8,6 +8,7 @@ import { AgentCard } from "../components/AgentCard";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { statusOrder } from "../lib/utils";
 import { ErrorDisplay } from "../components/ErrorDisplay";
+import { AnomalyBadge } from "../components/monitoring/AnomalyBadge";
 
 function ProvisioningBadge({ status, error, t }: {
   status: string;
@@ -57,7 +58,9 @@ export function DashboardPage() {
   const [activateTarget, setActivateTarget] = useState<number | null>(null);
   const [activateAgentId, setActivateAgentId] = useState("");
   const [webuiLoading, setWebuiLoading] = useState<number | null>(null);
+  const [anomalyCount, setAnomalyCount] = useState(0);
 
+  const loadCountRef = useRef(0);
   const loadData = useCallback(async () => {
     try {
       const agentsRes = await adminApi.listAgents();
@@ -74,6 +77,13 @@ export function DashboardPage() {
         try {
           const usersRes = await adminApi.listUsers();
           setUsers(usersRes.users);
+        } catch { /* non-critical */ }
+        try {
+          loadCountRef.current++;
+          if (loadCountRef.current % 3 === 0) {
+            const monitorRes = await adminApi.getMonitorSummary();
+            setAnomalyCount(monitorRes.anomaly_count ?? 0);
+          }
         } catch { /* non-critical */ }
       }
     } catch (err) {
@@ -141,9 +151,12 @@ export function DashboardPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold font-[family-name:var(--font-body)] text-text-primary">
-            {t.dashboard}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold font-[family-name:var(--font-body)] text-text-primary">
+              {t.dashboard}
+            </h1>
+            {!isUser && <AnomalyBadge count={anomalyCount} />}
+          </div>
           <p className="text-sm text-text-secondary">{t.dashboardSubtitle}</p>
         </div>
         {!isUser && (
@@ -174,6 +187,20 @@ export function DashboardPage() {
       )}
 
       {cluster && <ClusterStatusBar cluster={cluster} />}
+
+      {anomalyCount > 0 && !isUser && (
+        <div className="bg-accent-pink/10 border border-accent-pink/30 border-l-[3px] border-l-accent-pink p-3 rounded-lg mb-4 flex items-center justify-between">
+          <p className="text-sm text-accent-pink">
+            {t.monitorAnomalyNeedsAttention.replace("{n}", String(anomalyCount))}
+          </p>
+          <button
+            onClick={() => navigate("/monitoring?tab=anomaly")}
+            className="text-xs text-accent-pink underline hover:no-underline"
+          >
+            {t.monitorViewDetails} &rarr;
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="bg-surface border-l-[3px] border-l-accent-pink p-3 rounded-lg mb-4">

@@ -760,6 +760,90 @@ export interface ResourceSpec {
 }
 
 // ---------------------------------------------------------------------------
+// Monitoring types
+// ---------------------------------------------------------------------------
+
+export interface AnomalyAgent {
+  id: number;
+  agent_number: number;
+  agent_name: string;
+  anomaly_type: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: Record<string, unknown>;
+  status: "active" | "acknowledged" | "ignored" | "resolved";
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  /** Derived from latest inspection snapshot */
+  cpu_usage_pct: number | null;
+  memory_usage_pct: number | null;
+  restart_count: number | null;
+  pod_phase: string | null;
+  last_event_summary: string | null;
+}
+
+export interface InspectionCheckResult {
+  agent_number: number;
+  agent_name: string;
+  check_name: string;
+  status: "passed" | "warning" | "failed" | "skipped";
+  detail: string;
+}
+
+export interface InspectionBatchResponse {
+  batch_id: string;
+  agent_count: number;
+  created_at: string;
+  results: InspectionCheckResult[];
+}
+
+export interface MonitorSummary {
+  cluster: ClusterStatus | null;
+  anomaly_count: number;
+  anomaly_agents: AnomalyAgent[];
+  resource_agents: Array<{
+    agent_number: number;
+    agent_name: string;
+    status: string;
+    cpu_usage_pct: number | null;
+    memory_usage_pct: number | null;
+    cpu_cores: number | null;
+    memory_bytes: number | null;
+  }>;
+  last_inspection_at: string | null;
+  inspection_healthy: boolean;
+}
+
+export interface AnomalyItem {
+  id: number;
+  agent_number: number;
+  anomaly_type: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: Record<string, unknown>;
+  status: "active" | "acknowledged" | "ignored" | "resolved";
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+}
+
+export interface InspectionHistoryItem {
+  batch_id: string;
+  agent_count: number;
+  created_at: string;
+  anomaly_count: number;
+}
+
+export interface AgentTrendPoint {
+  hour: string;
+  avg_cpu_pct: number | null;
+  avg_memory_pct: number | null;
+  health_ok_count: number;
+  total_checks: number;
+}
+
+// ---------------------------------------------------------------------------
 // API methods
 // ---------------------------------------------------------------------------
 
@@ -1473,6 +1557,46 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(params),
     });
+  },
+
+  // -- Monitoring --
+  getMonitorSummary(): Promise<MonitorSummary> {
+    return adminFetch("/monitor/summary");
+  },
+
+  getAnomalies(params?: { status?: string; severity?: string }): Promise<AnomalyItem[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.severity) query.set("severity", params.severity);
+    const qs = query.toString();
+    return adminFetch(`/monitor/anomalies${qs ? `?${qs}` : ""}`);
+  },
+
+  updateAnomaly(id: number, status: string): Promise<AnomalyItem> {
+    return adminFetch(`/monitor/anomalies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  triggerInspection(): Promise<InspectionBatchResponse> {
+    return adminFetch("/monitor/inspections", { method: "POST" });
+  },
+
+  getLatestInspection(): Promise<InspectionBatchResponse | null> {
+    return adminFetch("/monitor/inspections/latest");
+  },
+
+  getInspectionHistory(params?: { limit?: number; offset?: number }): Promise<{ items: InspectionHistoryItem[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return adminFetch(`/monitor/inspections${qs ? `?${qs}` : ""}`);
+  },
+
+  getAgentTrend(agentNumber: number): Promise<AgentTrendPoint[]> {
+    return adminFetch(`/monitor/inspections/${agentNumber}/trend`);
   },
 
 };

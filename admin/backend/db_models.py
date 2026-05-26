@@ -1,7 +1,9 @@
 """ORM models for Hermes Admin user management."""
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, desc, func, text
+from uuid import uuid4
+
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid, desc, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
@@ -248,3 +250,65 @@ class DispatchAssignment(Base):
     confirm_deadline = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class InspectionSnapshot(Base):
+    """Per-agent inspection snapshot persisted every inspection cycle (7-day TTL)."""
+    __tablename__ = "inspection_snapshots"
+    __table_args__ = (
+        Index("ix_snapshot_agent_batch", "agent_number", "batch_id"),
+        Index("ix_snapshot_created", "created_at"),
+        Index("ix_snapshot_agent_created", "agent_number", desc("created_at")),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    batch_id = Column(Uuid, nullable=False, default=uuid4, server_default=func.gen_random_uuid())
+    agent_number = Column(Integer, nullable=False)
+    health_ok = Column(Boolean, nullable=True)
+    health_latency_ms = Column(Float, nullable=True)
+    pod_phase = Column(String(20), nullable=True)
+    pod_restart_count = Column(Integer, default=0, server_default="0")
+    cpu_cores = Column(Float, nullable=True)
+    cpu_limit_cores = Column(Float, nullable=True)
+    memory_bytes = Column(BigInteger, nullable=True)
+    memory_limit_bytes = Column(BigInteger, nullable=True)
+    cpu_usage_pct = Column(Float, nullable=True)
+    memory_usage_pct = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class InspectionAnomaly(Base):
+    """Detected anomaly from inspection runs. Deduplicated via partial unique index."""
+    __tablename__ = "inspection_anomalies"
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('critical', 'warning', 'info')",
+            name="ck_anomaly_severity",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'acknowledged', 'ignored', 'resolved')",
+            name="ck_anomaly_status",
+        ),
+        Index("ix_anomaly_status_created", "status", desc("created_at")),
+        Index("ix_anomaly_agent", "agent_number"),
+        Index(
+            "ix_anomaly_active_unique",
+            "agent_number",
+            "anomaly_type",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    agent_number = Column(Integer, nullable=False)
+    anomaly_type = Column(String(50), nullable=False)
+    severity = Column(String(20), nullable=False)
+    title = Column(String(200), nullable=False)
+    detail = Column(JSONB, default=dict, server_default="{}", nullable=False)
+    status = Column(String(20), default="active", server_default="active", nullable=False)
+    snapshot_id = Column(BigInteger, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

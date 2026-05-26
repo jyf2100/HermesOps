@@ -51,6 +51,7 @@ from profile_routes import router as profile_router
 from skill_scanner import scan_skills
 from user_routes import router as user_router
 from hub_routes import router as hub_router
+from monitor_routes import router as monitor_router
 from database import AsyncSessionLocal
 from db_models import AgentMetadata as AgentMetadataORM
 from db_models import AgentSkill as AgentSkillORM
@@ -108,6 +109,16 @@ app.include_router(kanban_router)
 app.include_router(profile_router)
 app.include_router(user_router)
 app.include_router(hub_router)
+
+# ---------------------------------------------------------------------------
+# Monitor routes — inject auth dependencies before including
+# ---------------------------------------------------------------------------
+from fastapi.routing import APIRoute as _APIRoute
+for _route in monitor_router.routes:
+    if isinstance(_route, _APIRoute):
+        _route.dependencies.append(auth)
+        _route.dependencies.append(admin_only)
+app.include_router(monitor_router)
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +391,7 @@ k8s = K8sClient(namespace=K8S_NAMESPACE)
 app.state.k8s = k8s
 config_mgr = ConfigManager(data_root=HERMES_DATA_ROOT)
 manager = AgentManager(k8s=k8s, namespace=K8S_NAMESPACE, config_mgr=config_mgr)
+app.state.manager = manager
 tpl = TemplateGenerator(data_root=HERMES_DATA_ROOT)
 
 
@@ -505,6 +517,16 @@ async def _warn_no_auth():
     # Dispatch: start timeout scanner (must be after init_db)
     asyncio.create_task(_dispatch_timeout_scanner())
 
+    # Monitor: start periodic inspection runner (must be after init_db)
+    try:
+        from inspection import InspectionRunner
+        runner = InspectionRunner(manager=manager)
+        app.state.inspection_runner = runner
+        asyncio.create_task(runner.run_periodic())
+        logger.info("Inspection runner started")
+    except Exception as e:
+        logger.warning("Inspection runner start skipped: %s", e)
+
 
 @app.on_event("shutdown")
 async def _shutdown_kanban():
@@ -514,6 +536,10 @@ async def _shutdown_kanban():
     orch_client = getattr(app.state, "orch_client", None)
     if orch_client is not None:
         await orch_client.aclose()
+    # Shut down inspection runner
+    runner = getattr(app.state, "inspection_runner", None)
+    if runner is not None:
+        runner.shutdown()
 
 
 def _verify_sse_token(agent_id: int, token: str) -> bool:

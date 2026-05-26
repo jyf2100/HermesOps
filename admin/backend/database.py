@@ -284,12 +284,76 @@ _MIGRATION_SQL: list[str] = [
     ALTER TABLE dispatch_assignments
       ADD COLUMN IF NOT EXISTS kanban_task_id VARCHAR(128)
     """,
+    # --- Monitoring / Inspection tables ---
+    """
+    CREATE TABLE IF NOT EXISTS inspection_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        batch_id UUID NOT NULL DEFAULT gen_random_uuid(),
+        agent_number INTEGER NOT NULL,
+        health_ok BOOLEAN,
+        health_latency_ms FLOAT,
+        pod_phase VARCHAR(20),
+        pod_restart_count INTEGER DEFAULT 0,
+        cpu_cores FLOAT,
+        cpu_limit_cores FLOAT,
+        memory_bytes BIGINT,
+        memory_limit_bytes BIGINT,
+        cpu_usage_pct FLOAT,
+        memory_usage_pct FLOAT,
+        error_message TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_snapshot_agent_batch
+      ON inspection_snapshots (agent_number, batch_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_snapshot_created
+      ON inspection_snapshots (created_at)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_snapshot_agent_created
+      ON inspection_snapshots (agent_number, created_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS inspection_anomalies (
+        id BIGSERIAL PRIMARY KEY,
+        agent_number INTEGER NOT NULL,
+        anomaly_type VARCHAR(50) NOT NULL,
+        severity VARCHAR(20) NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        detail JSONB DEFAULT '{}',
+        status VARCHAR(20) DEFAULT 'active',
+        snapshot_id BIGINT,
+        resolved_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT ck_anomaly_severity CHECK (severity IN ('critical', 'warning', 'info')),
+        CONSTRAINT ck_anomaly_status CHECK (status IN ('active', 'acknowledged', 'ignored', 'resolved'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_anomaly_status_created
+      ON inspection_anomalies (status, created_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_anomaly_agent
+      ON inspection_anomalies (agent_number)
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS ix_anomaly_active_unique
+      ON inspection_anomalies (agent_number, anomaly_type)
+      WHERE status = 'active'
+    """,
 ]
 
 _CLEANUP_SQL: list[str] = [
     "DELETE FROM skill_report_ids WHERE processed_at < NOW() - INTERVAL '7 days'",
     "DELETE FROM profile_audit_log WHERE created_at < NOW() - INTERVAL '90 days'",
     "DELETE FROM dispatch_tasks WHERE created_at < NOW() - INTERVAL '90 days' AND status IN ('completed', 'failed', 'cancelled')",
+    "DELETE FROM inspection_snapshots WHERE created_at < NOW() - INTERVAL '7 days'",
+    "DELETE FROM inspection_anomalies WHERE status IN ('resolved', 'ignored') AND resolved_at < NOW() - INTERVAL '90 days'",
 ]
 
 
