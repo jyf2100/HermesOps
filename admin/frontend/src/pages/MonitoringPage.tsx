@@ -34,6 +34,7 @@ export function MonitoringPage() {
   const [cluster, setCluster] = useState<ClusterStatus | null>(null);
   const [anomalyAgents, setAnomalyAgents] = useState<AnomalyAgent[]>([]);
   const [inspectionResults, setInspectionResults] = useState<InspectionCheckResult[]>([]);
+  const [resourceAgents, setResourceAgents] = useState<{ agent_number: number; name: string; cpu_usage_pct: number | null; memory_usage_pct: number | null }[]>([]);
   const [summary, setSummary] = useState<MonitorSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +42,27 @@ export function MonitoringPage() {
 
   const loadData = useCallback(async () => {
     try {
-      // Fetch agents list + monitor summary in parallel
-      const [agentsRes, summaryRes] = await Promise.all([
+      // Fetch agents list + monitor summary + latest inspection in parallel
+      const [agentsRes, summaryRes, inspectionRes] = await Promise.all([
         adminApi.listAgents(),
         adminApi.getMonitorSummary(),
+        adminApi.getLatestInspection().catch(() => null),
       ]);
 
       setAgents(agentsRes.agents);
       setSummary(summaryRes);
+
+      // Derive resource data from latest inspection snapshots
+      if (inspectionRes?.results?.length) {
+        setInspectionResults(inspectionRes.results);
+        const resourceData = inspectionRes.results.map((r: InspectionCheckResult) => ({
+          agent_number: r.agent_number,
+          name: r.agent_name ?? `Agent ${r.agent_number}`,
+          cpu_usage_pct: r.cpu_usage_pct ?? null,
+          memory_usage_pct: r.memory_usage_pct ?? null,
+        }));
+        setResourceAgents(resourceData);
+      }
 
       // Derive data from summary
       if (summaryRes.cluster) {
@@ -240,7 +254,7 @@ export function MonitoringPage() {
           {/* Resource bars */}
           <div className="rounded-lg border border-border bg-card p-4">
             <h3 className="text-sm font-semibold text-text-primary mb-3">{t.monitorResourceUsage}</h3>
-            <ResourceBars agents={agents} />
+            <ResourceBars agents={agents} resourceAgents={resourceAgents} />
           </div>
         </div>
       )}
@@ -263,7 +277,7 @@ export function MonitoringPage() {
       {activeTab === "resources" && (
         <div className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-semibold text-text-primary mb-4">{t.monitorResourceUsage}</h3>
-          <ResourceBars agents={agents} />
+          <ResourceBars agents={agents} resourceAgents={resourceAgents} />
         </div>
       )}
 

@@ -789,6 +789,8 @@ export interface InspectionCheckResult {
   check_name: string;
   status: "passed" | "warning" | "failed" | "skipped";
   detail: string;
+  cpu_usage_pct?: number | null;
+  memory_usage_pct?: number | null;
 }
 
 export interface InspectionBatchResponse {
