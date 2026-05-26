@@ -111,17 +111,6 @@ app.include_router(user_router)
 app.include_router(hub_router)
 
 # ---------------------------------------------------------------------------
-# Monitor routes — inject auth dependencies before including
-# ---------------------------------------------------------------------------
-from fastapi.routing import APIRoute as _APIRoute
-for _route in monitor_router.routes:
-    if isinstance(_route, _APIRoute):
-        _route.dependencies.append(auth)
-        _route.dependencies.append(admin_only)
-app.include_router(monitor_router)
-
-
-# ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 ADMIN_CORS_ORIGINS = os.environ.get("ADMIN_CORS_ORIGINS", "").split(",") if os.environ.get("ADMIN_CORS_ORIGINS") else ["*"]
@@ -263,6 +252,17 @@ async def _admin_only_dep(request: Request) -> None:
 
 
 admin_only = Depends(_admin_only_dep)
+
+
+# ---------------------------------------------------------------------------
+# Monitor routes — inject auth dependencies before including
+# ---------------------------------------------------------------------------
+from fastapi.routing import APIRoute as _APIRoute
+for _route in monitor_router.routes:
+    if isinstance(_route, _APIRoute):
+        _route.dependencies.append(auth)
+        _route.dependencies.append(admin_only)
+app.include_router(monitor_router)
 
 
 def _verify_internal_token(request: Request) -> None:
