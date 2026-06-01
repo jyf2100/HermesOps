@@ -29,17 +29,13 @@ export function ConfirmDialog({
       : "border border-accent-cyan text-accent-cyan hover:bg-accent-cyan/10";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Glass backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onCancel}
-      />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
       {/* Dialog */}
       <div
         className={`animate-modal-enter relative bg-surface-elevated border border-border rounded-lg shadow-lg max-w-md w-full mx-4 p-6 ${
           variant === "destructive" ? "border-t-2 border-t-accent-pink" : ""
         }`}
+        onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-text-primary mb-2">
           {title}

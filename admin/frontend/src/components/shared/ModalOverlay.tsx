@@ -15,7 +15,7 @@ export function ModalOverlay({
 }: ModalOverlayProps) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-16 overflow-y-auto pb-8 bg-black/50"
       data-testid="modal-root"
       role="dialog"
       aria-modal="true"

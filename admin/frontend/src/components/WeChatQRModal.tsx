@@ -141,10 +141,7 @@ export function WeChatQRModal({ agentId, open, onClose, onSuccess }: WeChatQRMod
   const progressPct = (remaining / 480) * 100;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
-      {/* Glass backdrop */}
-      <div className="absolute inset-0 bg-background/70 backdrop-blur-md" />
-
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-md" onClick={onClose}>
       {/* Modal */}
       <div
         className="relative z-10 w-full max-w-md mx-4 rounded-lg border border-border bg-surface p-6 animate-modal-enter"
