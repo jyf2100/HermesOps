@@ -14,12 +14,15 @@ import { ClusterStatusBar } from "../components/ClusterStatusBar";
 import { AnomalyAgentList } from "../components/monitoring/AnomalyAgentList";
 import { ResourceBars } from "../components/monitoring/ResourceBars";
 import { InspectionResults } from "../components/monitoring/InspectionResults";
+import { AlertRulesTab } from "../components/monitoring/AlertRulesTab";
+import { AlertRecordsTab } from "../components/monitoring/AlertRecordsTab";
+import { LogSearchTab } from "../components/monitoring/LogSearchTab";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { ErrorDisplay } from "../components/ErrorDisplay";
 
-type TabKey = "overview" | "anomaly" | "resources" | "inspection";
+type TabKey = "overview" | "anomaly" | "resources" | "inspection" | "alert_rules" | "alert_records" | "logs";
 
-const VALID_TABS: TabKey[] = ["overview", "anomaly", "resources", "inspection"];
+const VALID_TABS: TabKey[] = ["overview", "anomaly", "resources", "inspection", "alert_rules", "alert_records", "logs"];
 
 export function MonitoringPage() {
   const { t } = useI18n();
@@ -39,6 +42,19 @@ export function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inspectionLoading, setInspectionLoading] = useState(false);
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
+
+  const handleBootstrapWebui = useCallback(async () => {
+    setBootstrapLoading(true);
+    try {
+      const res = await adminApi.bootstrapAllWebui();
+      showToast(`WebUI bootstrap: ${res.bootstrapped}/${res.total} initialized`, "success");
+    } catch (e: unknown) {
+      showToast(`WebUI bootstrap failed: ${e instanceof Error ? e.message : String(e)}`, "error");
+    } finally {
+      setBootstrapLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -54,8 +70,49 @@ export function MonitoringPage() {
 
       // Derive resource data from latest inspection snapshots
       if (inspectionRes?.results?.length) {
-        setInspectionResults(inspectionRes.results);
-        const resourceData = inspectionRes.results.map((r: InspectionCheckResult) => ({
+        // Convert flat backend results to frontend table rows
+        const rows: InspectionCheckResult[] = [];
+        for (const r of inspectionRes.results) {
+          const name = agentsRes.agents.find((a) => a.id === r.agent_number)?.display_name || `Agent ${r.agent_number}`;
+          rows.push({
+            agent_number: r.agent_number,
+            agent_name: name,
+            check_name: "Health",
+            status: r.health_ok ? "passed" : "failed",
+            detail: r.health_ok ? `OK (${r.health_latency_ms?.toFixed(0) ?? "?"}ms)` : (r.error_message ?? "Failed"),
+            cpu_usage_pct: r.cpu_usage_pct,
+            memory_usage_pct: r.memory_usage_pct,
+          });
+          rows.push({
+            agent_number: r.agent_number,
+            agent_name: name,
+            check_name: "Pod",
+            status: r.pod_phase === "Running" ? "passed" : "failed",
+            detail: r.pod_phase ?? "-",
+          });
+          if (r.cpu_usage_pct != null) {
+            rows.push({
+              agent_number: r.agent_number,
+              agent_name: name,
+              check_name: "CPU",
+              status: r.cpu_usage_pct > 90 ? "warning" : "passed",
+              detail: `${r.cpu_usage_pct.toFixed(1)}%`,
+              cpu_usage_pct: r.cpu_usage_pct,
+            });
+          }
+          if (r.memory_usage_pct != null) {
+            rows.push({
+              agent_number: r.agent_number,
+              agent_name: name,
+              check_name: "Memory",
+              status: r.memory_usage_pct > 90 ? "warning" : "passed",
+              detail: `${r.memory_usage_pct.toFixed(1)}%`,
+              memory_usage_pct: r.memory_usage_pct,
+            });
+          }
+        }
+        setInspectionResults(rows);
+        const resourceData = (inspectionRes.results as any[]).map((r: any) => ({
           agent_number: r.agent_number,
           name: r.agent_name ?? `Agent ${r.agent_number}`,
           cpu_usage_pct: r.cpu_usage_pct ?? null,
@@ -83,8 +140,23 @@ export function MonitoringPage() {
   // Load inspection data when inspection tab is active
   const loadInspection = useCallback(async () => {
     try {
-      const res = await adminApi.getLatestInspection();
-      setInspectionResults(res?.results ?? []);
+      const [res, agentsRes] = await Promise.all([
+        adminApi.getLatestInspection(),
+        adminApi.listAgents(),
+      ]);
+      if (res?.results?.length) {
+        const rows: InspectionCheckResult[] = [];
+        for (const r of res.results as any[]) {
+          const name = agentsRes.agents.find((a: any) => a.id === r.agent_number)?.display_name || `Agent ${r.agent_number}`;
+          rows.push({ agent_number: r.agent_number, agent_name: name, check_name: "Health", status: r.health_ok ? "passed" : "failed", detail: r.health_ok ? `OK (${r.health_latency_ms?.toFixed(0) ?? "?"}ms)` : (r.error_message ?? "Failed"), cpu_usage_pct: r.cpu_usage_pct, memory_usage_pct: r.memory_usage_pct });
+          rows.push({ agent_number: r.agent_number, agent_name: name, check_name: "Pod", status: r.pod_phase === "Running" ? "passed" : "failed", detail: r.pod_phase ?? "-" });
+          if (r.cpu_usage_pct != null) rows.push({ agent_number: r.agent_number, agent_name: name, check_name: "CPU", status: r.cpu_usage_pct > 90 ? "warning" : "passed", detail: `${r.cpu_usage_pct.toFixed(1)}%`, cpu_usage_pct: r.cpu_usage_pct });
+          if (r.memory_usage_pct != null) rows.push({ agent_number: r.agent_number, agent_name: name, check_name: "Memory", status: r.memory_usage_pct > 90 ? "warning" : "passed", detail: `${r.memory_usage_pct.toFixed(1)}%`, memory_usage_pct: r.memory_usage_pct });
+        }
+        setInspectionResults(rows);
+      } else {
+        setInspectionResults([]);
+      }
     } catch {
       // Inspection data is non-critical
     }
@@ -129,7 +201,7 @@ export function MonitoringPage() {
       await adminApi.updateAnomaly(id, action);
       loadData();
     } catch {
-      // Silently retry on next poll
+      /* non-critical */
     }
   }
 
@@ -172,6 +244,9 @@ export function MonitoringPage() {
     { key: "anomaly", label: t.monitorAnomaly },
     { key: "resources", label: t.monitorResources },
     { key: "inspection", label: t.monitorInspection },
+    { key: "alert_rules", label: t.alertRules },
+    { key: "alert_records", label: t.alertRecords },
+    { key: "logs", label: t.logSearch },
   ];
 
   return (
@@ -193,14 +268,23 @@ export function MonitoringPage() {
             </p>
           )}
         </div>
+        <button
+          onClick={handleBootstrapWebui}
+          disabled={bootstrapLoading}
+          className="px-3 py-1.5 text-sm rounded-lg bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+        >
+          {bootstrapLoading ? "Initializing..." : "Init WebUI Users"}
+        </button>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-border">
+      <div role="tablist" className="flex gap-1 mb-6 border-b border-border overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setTab(tab.key)}
+            role="tab"
+            aria-selected={activeTab === tab.key}
             className={[
               "px-4 py-2 text-sm transition-colors relative -mb-px border-b-2",
               activeTab === tab.key
@@ -227,7 +311,7 @@ export function MonitoringPage() {
 
       {/* Tab content */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
+        <div role="tabpanel" className="space-y-6">
           {/* Cluster health — reuse ClusterStatusBar */}
           {cluster && <ClusterStatusBar cluster={cluster} />}
 
@@ -260,7 +344,7 @@ export function MonitoringPage() {
       )}
 
       {activeTab === "anomaly" && (
-        <div>
+        <div role="tabpanel">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-text-primary">
               {t.monitorAnomaly} ({anomalyAgents.length})
@@ -275,7 +359,7 @@ export function MonitoringPage() {
       )}
 
       {activeTab === "resources" && (
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div role="tabpanel" className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-semibold text-text-primary mb-4">{t.monitorResourceUsage}</h3>
           <ResourceBars agents={agents} resourceAgents={resourceAgents} />
         </div>
@@ -288,6 +372,10 @@ export function MonitoringPage() {
           loading={inspectionLoading}
         />
       )}
+
+      {activeTab === "alert_rules" && <AlertRulesTab />}
+      {activeTab === "alert_records" && <AlertRecordsTab />}
+      {activeTab === "logs" && <LogSearchTab />}
     </div>
   );
 }
