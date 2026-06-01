@@ -791,11 +791,18 @@ export interface InspectionCheckResult {
   detail: string;
   cpu_usage_pct?: number | null;
   memory_usage_pct?: number | null;
+  // Backend raw fields (used for conversion)
+  health_ok?: boolean | null;
+  health_latency_ms?: number | null;
+  pod_phase?: string | null;
+  pod_restart_count?: number;
+  error_message?: string | null;
 }
 
 export interface InspectionBatchResponse {
   batch_id: string;
-  agent_count: number;
+  checked_count: number;
+  anomaly_count: number;
   created_at: string;
   results: InspectionCheckResult[];
 }
@@ -843,6 +850,108 @@ export interface AgentTrendPoint {
   avg_memory_pct: number | null;
   health_ok_count: number;
   total_checks: number;
+}
+
+// ---------------------------------------------------------------------------
+// Alert Rule types (Phase 2)
+// ---------------------------------------------------------------------------
+
+export interface AlertRule {
+  id: number;
+  name: string;
+  enabled: boolean;
+  anomaly_type: string;
+  severity_filter: string[];
+  agent_numbers: number[];
+  action: "alert" | "restart_pod" | "scale_resources";
+  cooldown_seconds: number;
+  scale_cpu_millicores: number | null;
+  scale_memory_mb: number | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlertRuleCreateRequest {
+  name: string;
+  enabled?: boolean;
+  anomaly_type: string;
+  severity_filter?: string[];
+  agent_numbers?: number[];
+  action: "alert" | "restart_pod" | "scale_resources";
+  cooldown_seconds?: number;
+  scale_cpu_millicores?: number | null;
+  scale_memory_mb?: number | null;
+}
+
+export interface AlertRuleUpdateRequest extends Partial<AlertRuleCreateRequest> {
+  name?: string;
+}
+
+export interface AlertRecord {
+  id: number;
+  rule_id: number | null;
+  anomaly_id: number | null;
+  agent_number: number;
+  action_taken: string;
+  action_result: Record<string, unknown>;
+  triggered_at: string;
+}
+
+export interface AlertRuleListResponse {
+  rules: AlertRule[];
+  total: number;
+}
+
+export interface AlertRecordListResponse {
+  records: AlertRecord[];
+  total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Log search types (Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface LogSearchRequest {
+  keywords?: string;
+  agents?: number[];
+  level?: string | null;
+  time_from?: string | null;
+  time_to?: string | null;
+  page?: number;
+  page_size?: number;
+}
+
+export interface LogEntry {
+  id: number;
+  batch_id: string;
+  agent_number: number;
+  content: string;
+  level: string | null;
+  is_error: boolean;
+  collected_at: string;
+}
+
+export interface LogSearchResponse {
+  entries: LogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+  elapsed_ms: number;
+}
+
+export interface LogStatsAgent {
+  agent_number: number;
+  error_count: number;
+  total_count: number;
+  last_collected_at: string | null;
+}
+
+export interface LogStatsResponse {
+  agents: LogStatsAgent[];
+  total_entries: number;
+  total_errors: number;
+  retention_days: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1599,6 +1708,85 @@ export const adminApi = {
 
   getAgentTrend(agentNumber: number): Promise<AgentTrendPoint[]> {
     return adminFetch(`/monitor/inspections/${agentNumber}/trend`);
+  },
+
+  // -- Alert Rules (Phase 2) --
+  listAlertRules(): Promise<AlertRuleListResponse> {
+    return adminFetch("/monitor/alert-rules");
+  },
+
+  createAlertRule(data: AlertRuleCreateRequest): Promise<AlertRule> {
+    return adminFetch("/monitor/alert-rules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateAlertRule(id: number, data: AlertRuleUpdateRequest): Promise<AlertRule> {
+    return adminFetch(`/monitor/alert-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteAlertRule(id: number): Promise<{ message: string }> {
+    return adminFetch(`/monitor/alert-rules/${id}`, { method: "DELETE" });
+  },
+
+  listAlertRecords(params?: { agent_number?: number; rule_id?: number; since?: string; limit?: number; offset?: number }): Promise<AlertRecordListResponse> {
+    const query = new URLSearchParams();
+    if (params?.agent_number !== undefined) query.set("agent_number", String(params.agent_number));
+    if (params?.rule_id !== undefined) query.set("rule_id", String(params.rule_id));
+    if (params?.since) query.set("since", params.since);
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.offset) query.set("offset", String(params.offset));
+    const qs = query.toString();
+    return adminFetch(`/monitor/alert-records${qs ? `?${qs}` : ""}`);
+  },
+
+  // -- Log Search (Phase 3) --
+  searchLogs(params: LogSearchRequest): Promise<LogSearchResponse> {
+    return adminFetch("/monitor/logs/search", {
+      method: "POST",
+      body: JSON.stringify({
+        keywords: params.keywords || "",
+        agents: params.agents || [],
+        level: params.level || null,
+        time_from: params.time_from || null,
+        time_to: params.time_to || null,
+        page: params.page || 1,
+        page_size: params.page_size || 20,
+      }),
+    });
+  },
+
+  exportLogs(params: LogSearchRequest): Promise<Blob> {
+    const query = new URLSearchParams();
+    if (params.keywords) query.set("keywords", params.keywords);
+    if (params.agents?.length) query.set("agents", params.agents.join(","));
+    if (params.level) query.set("level", params.level);
+    if (params.time_from) query.set("time_from", params.time_from);
+    if (params.time_to) query.set("time_to", params.time_to);
+    const qs = query.toString();
+    return adminFetch(`/monitor/logs/export${qs ? `?${qs}` : ""}`);
+  },
+
+  getLogStats(): Promise<LogStatsResponse> {
+    return adminFetch("/monitor/logs/stats");
+  },
+
+  // WebUI bootstrap
+  async bootstrapAllWebui(): Promise<{
+    results: Array<{ agent_number: number; success: boolean; detail: string }>;
+    total: number; bootstrapped: number; skipped: number;
+  }> {
+    return adminFetch("/agents/webui-bootstrap", { method: "POST" });
+  },
+
+  async bootstrapAgentWebui(
+    agentId: number,
+  ): Promise<{ agent_number: number; success: boolean; detail: string }> {
+    return adminFetch(`/agents/${agentId}/webui-bootstrap`, { method: "POST" });
   },
 
 };

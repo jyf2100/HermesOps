@@ -963,6 +963,92 @@ export interface Translations {
   monitorAnomalyHighCpu: string;
   monitorAnomalyHighMemory: string;
   monitorAnomalyHighRestarts: string;
+
+  // Alert Rules (Phase 2)
+  alertRules: string;
+  alertRecords: string;
+  alertRulesTitle: string;
+  alertNewRule: string;
+  alertEditRule: string;
+  alertDeleteRule: string;
+  alertRuleName: string;
+  alertAnomalyType: string;
+  alertSeverity: string;
+  alertAction: string;
+  alertCooldown: string;
+  alertEnabled: string;
+  alertDisabled: string;
+  alertTargetAgents: string;
+  alertAllAgents: string;
+  alertSpecifyAgents: string;
+  alertScaleCPU: string;
+  alertScaleMemory: string;
+  alertScaleSection: string;
+  alertActionAlert: string;
+  alertActionRestart: string;
+  alertActionScale: string;
+  alertCooldownSeconds: string;
+  alertSave: string;
+  alertCancel: string;
+  alertDelete: string;
+  alertDeleteConfirm: string;
+  alertRecordTime: string;
+  alertRecordAgent: string;
+  alertRecordRule: string;
+  alertRecordAction: string;
+  alertRecordResult: string;
+  alertRecordSuccess: string;
+  alertRecordSkipped: string;
+  alertRecordCooldown: string;
+  alertRecordExecuting: string;
+  alertRecordError: string;
+  alertNoRules: string;
+  alertNoRecords: string;
+  alertSeverityCritical: string;
+  alertSeverityWarning: string;
+  alertSeverityInfo: string;
+  alertFilterAllAgents: string;
+  alertFilterAllRules: string;
+  alertFilterTime24h: string;
+  alertFilterTime7d: string;
+  alertFilterTime30d: string;
+  alertMaxCPU: string;
+  alertMaxMemory: string;
+  alertScaleHintCPU: string;
+  alertScaleHintMemory: string;
+  alertSeconds: string;
+  alertNoAgents: string;
+
+  // Log Search (Phase 3)
+  logSearch: string;
+  logSearchTitle: string;
+  logKeywords: string;
+  logLevel: string;
+  logTimeRange: string;
+  logSearchButton: string;
+  logExportButton: string;
+  logExporting: string;
+  logNoResults: string;
+  logResultCount: string;
+  logAllAgents: string;
+  logAllLevels: string;
+  logTime1h: string;
+  logTime6h: string;
+  logTime24h: string;
+  logTime7d: string;
+  logError: string;
+  logWarn: string;
+  logInfo: string;
+  logDebug: string;
+  logLevelError: string;
+  logLevelWarn: string;
+  logLevelInfo: string;
+  logLevelDebug: string;
+  logPlaceholder: string;
+  logExportSuccess: string;
+  logExportFailed: string;
+  logAgentCount: string;
+  logNoAgents: string;
 }
 
 export const zh: Translations = {
@@ -1955,4 +2041,90 @@ export const zh: Translations = {
   monitorAnomalyHighCpu: "High CPU",
   monitorAnomalyHighMemory: "High Memory",
   monitorAnomalyHighRestarts: "High Restarts",
+
+  // Alert Rules (Phase 2)
+  alertRules: "告警规则",
+  alertRecords: "告警记录",
+  alertRulesTitle: "告警规则管理",
+  alertNewRule: "新建规则",
+  alertEditRule: "编辑规则",
+  alertDeleteRule: "删除规则",
+  alertRuleName: "规则名称",
+  alertAnomalyType: "异常类型",
+  alertSeverity: "严重级别",
+  alertAction: "动作",
+  alertCooldown: "冷却期",
+  alertEnabled: "已启用",
+  alertDisabled: "已禁用",
+  alertTargetAgents: "目标 Agent",
+  alertAllAgents: "全部 Agent",
+  alertSpecifyAgents: "指定 Agent",
+  alertScaleCPU: "CPU 限制 (millicores)",
+  alertScaleMemory: "内存限制 (MB)",
+  alertScaleSection: "扩容设置",
+  alertActionAlert: "仅告警",
+  alertActionRestart: "重启 Pod",
+  alertActionScale: "扩容资源",
+  alertCooldownSeconds: "冷却期（秒）",
+  alertSave: "保存",
+  alertCancel: "取消",
+  alertDelete: "删除",
+  alertDeleteConfirm: "确定删除此规则？",
+  alertRecordTime: "时间",
+  alertRecordAgent: "Agent",
+  alertRecordRule: "规则",
+  alertRecordAction: "动作",
+  alertRecordResult: "结果",
+  alertRecordSuccess: "成功",
+  alertRecordSkipped: "已跳过",
+  alertRecordCooldown: "冷却跳过",
+  alertRecordExecuting: "执行中",
+  alertRecordError: "失败",
+  alertNoRules: "暂无告警规则",
+  alertNoRecords: "暂无告警记录",
+  alertSeverityCritical: "严重",
+  alertSeverityWarning: "警告",
+  alertSeverityInfo: "信息",
+  alertFilterAllAgents: "全部 Agent",
+  alertFilterAllRules: "全部规则",
+  alertFilterTime24h: "最近 24h",
+  alertFilterTime7d: "最近 7 天",
+  alertFilterTime30d: "最近 30 天",
+  alertMaxCPU: "最大 4000",
+  alertMaxMemory: "最大 8192",
+  alertScaleHintCPU: "CPU 限制，单位 millicores（最大 4000 = 4 核）",
+  alertScaleHintMemory: "内存限制，单位 MB（最大 8192 = 8 GB）",
+  alertSeconds: "秒",
+  alertNoAgents: "没有可用的 Agent",
+
+  // Log Search (Phase 3)
+  logSearch: "日志",
+  logSearchTitle: "日志搜索",
+  logKeywords: "关键词",
+  logLevel: "级别",
+  logTimeRange: "时间范围",
+  logSearchButton: "搜索",
+  logExportButton: "导出 CSV",
+  logExporting: "导出中...",
+  logNoResults: "未找到匹配的日志条目",
+  logResultCount: "{count} 条，耗时 {elapsed}ms",
+  logAllAgents: "全部 Agent",
+  logAllLevels: "全部级别",
+  logTime1h: "最近 1h",
+  logTime6h: "最近 6h",
+  logTime24h: "最近 24h",
+  logTime7d: "最近 7d",
+  logError: "错误",
+  logWarn: "警告",
+  logInfo: "信息",
+  logDebug: "调试",
+  logLevelError: "错误",
+  logLevelWarn: "警告",
+  logLevelInfo: "信息",
+  logLevelDebug: "调试",
+  logPlaceholder: "搜索日志...",
+  logExportSuccess: "导出成功",
+  logExportFailed: "导出失败",
+  logAgentCount: "{count} 个 Agent",
+  logNoAgents: "没有 Agent",
 };
