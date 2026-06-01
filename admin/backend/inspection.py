@@ -8,6 +8,7 @@ import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from sqlalchemy import delete, desc, func, select, text
@@ -17,6 +18,9 @@ from database import AsyncSessionLocal
 from db_models import InspectionAnomaly, InspectionSnapshot
 from models import InspectionCheckResult
 from templates import deployment_name
+
+if TYPE_CHECKING:
+    from alert_engine import AlertEngine
 
 logger = logging.getLogger("hermes-admin.inspection")
 
@@ -52,6 +56,7 @@ class InspectionRunner:
         self._shutdown_event = asyncio.Event()
         self._last_cleanup_at = 0.0
         self._consecutive_normal: dict[tuple[int, str], int] = {}
+        self._alert_engine: AlertEngine | None = None
 
     # ── Background loop ────────────────────────────────────────
 
@@ -93,6 +98,33 @@ class InspectionRunner:
             await self._persist_anomalies(batch_id, anomalies)
             await self._resolve_old_anomalies(results)
             await self._maybe_cleanup()
+
+            # Evaluate alert rules against active anomalies
+            try:
+                from alert_engine import AlertEngine  # Deferred: avoids circular import at module level
+                if self._alert_engine is None:
+                    self._alert_engine = AlertEngine(self._manager)
+                async with AsyncSessionLocal() as alert_session:
+                    active_anomalies_result = await alert_session.execute(
+                        select(InspectionAnomaly).where(
+                            InspectionAnomaly.status == "active"
+                        )
+                    )
+                    # Convert to dicts while session is open to avoid DetachedInstanceError
+                    anomaly_rows = active_anomalies_result.scalars().all()
+                    active_anomalies = [
+                        {
+                            "id": a.id,
+                            "agent_number": a.agent_number,
+                            "anomaly_type": a.anomaly_type,
+                            "severity": a.severity,
+                        }
+                        for a in anomaly_rows
+                    ]
+                if active_anomalies:
+                    await self._alert_engine.evaluate_rules(active_anomalies)
+            except Exception:
+                logger.exception("Alert engine evaluation failed")
 
             return batch_id
 

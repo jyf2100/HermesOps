@@ -38,6 +38,7 @@ from models import (
     AgentMetadataResponse, AgentMetadataInternalResponse,
     SkillReportItem,
     ResourceSpec,
+    WebuiBootstrapResponse, WebuiBootstrapResult,
 )
 from k8s_client import K8sClient
 from agent_manager import AgentManager
@@ -527,6 +528,16 @@ async def _warn_no_auth():
     except Exception as e:
         logger.warning("Inspection runner start skipped: %s", e)
 
+    # Phase 3: start periodic log collector (must be after init_db)
+    try:
+        from log_collector import LogCollector
+        log_collector = LogCollector(manager=manager)
+        app.state.log_collector = log_collector
+        asyncio.create_task(log_collector.run_periodic())
+        logger.info("Log collector started")
+    except Exception as e:
+        logger.warning("Log collector start skipped: %s", e)
+
 
 @app.on_event("shutdown")
 async def _shutdown_kanban():
@@ -540,6 +551,10 @@ async def _shutdown_kanban():
     runner = getattr(app.state, "inspection_runner", None)
     if runner is not None:
         runner.shutdown()
+    # Shut down log collector
+    log_collector = getattr(app.state, "log_collector", None)
+    if log_collector is not None:
+        log_collector.shutdown()
 
 
 def _verify_sse_token(agent_id: int, token: str) -> bool:
@@ -848,6 +863,42 @@ async def stream_logs(request: Request, agent_id: int, token: Optional[str] = Qu
 async def agent_events(request: Request, agent_id: int):
     """Get recent Kubernetes events for an agent."""
     return await manager.get_events(_aid(request, agent_id))
+
+
+@app.post(f"{API_PREFIX}/agents/webui-bootstrap", response_model=WebuiBootstrapResponse,
+          dependencies=[auth, admin_only], tags=["agents-ops"])
+async def bootstrap_all_webui():
+    """Bootstrap WebUI admin user for all running agents."""
+    raw = await manager.bootstrap_all_agents_webui()
+    results = [WebuiBootstrapResult(**r) for r in raw]
+    bootstrapped = sum(1 for r in results if r.success)
+    return WebuiBootstrapResponse(
+        results=results, total=len(results),
+        bootstrapped=bootstrapped, skipped=len(results) - bootstrapped,
+    )
+
+
+@app.post(f"{API_PREFIX}/agents/{{agent_id}}/webui-bootstrap",
+          response_model=WebuiBootstrapResult,
+          dependencies=[auth], tags=["agents-ops"])
+async def bootstrap_agent_webui(request: Request, agent_id: int):
+    """Bootstrap WebUI admin user for a single agent."""
+    result = await manager.bootstrap_agent_webui(_aid(request, agent_id))
+    return WebuiBootstrapResult(**result)
+
+
+@app.post(f"{API_PREFIX}/migrate-providers", dependencies=[auth, admin_only], tags=["agents-ops"])
+async def migrate_all_providers():
+    """One-time migration: add providers dict to all existing agent configs.
+
+    Converts legacy custom_providers list or bare model.provider=custom configs
+    to v0.15.x providers dict format. Safe to re-run (skips already-migrated agents).
+    """
+    results = await manager.migrate_all_providers()
+    migrated = sum(1 for r in results if r["success"] and "migrated" in r.get("detail", ""))
+    skipped = sum(1 for r in results if r["success"] and "migrated" not in r.get("detail", ""))
+    failed = sum(1 for r in results if not r["success"])
+    return {"results": results, "total": len(results), "migrated": migrated, "skipped": skipped, "failed": failed}
 
 
 @app.post(f"{API_PREFIX}/agents/{{agent_id}}/api-key", response_model=AgentApiKeyResponse,

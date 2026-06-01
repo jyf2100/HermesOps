@@ -28,7 +28,7 @@ from models import (
 from k8s_client import K8sClient
 from config_manager import ConfigManager
 from constants import SECRET_PATTERNS, PROVIDER_URL_MAP, format_age, determine_api_mode, resolve_agent_provider, strip_v1_suffix, is_bearer_auth_endpoint
-from templates import deployment_name
+from templates import PROVIDER_KEY_MAP, deployment_name
 from database import AsyncSessionLocal
 from db_models import AgentMetadata, AgentProfile, AgentSkill, ReportIdRecord, User
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -501,6 +501,17 @@ class AgentManager:
                             )
             except Exception as exc:
                 logger.warning("Template auto-install hook failed for agent %d: %s", agent_num, exc)
+
+        # Post-hook: bootstrap WebUI admin user (best-effort, non-blocking)
+        if created:
+            try:
+                bs = await self.bootstrap_agent_webui(agent_num)
+                if bs["success"]:
+                    logger.info("WebUI admin user bootstrapped for agent %d", agent_num)
+                else:
+                    logger.debug("WebUI bootstrap skipped for agent %d: %s", agent_num, bs.get("detail", ""))
+            except Exception as exc:
+                logger.debug("WebUI bootstrap failed for agent %d: %s", agent_num, exc)
 
         return CreateAgentResponse(
             agent_number=agent_num, name=name, created=created,
@@ -1162,3 +1173,122 @@ class AgentManager:
         with open(tmp, "w") as f:
             json.dump(limits.model_dump(), f, indent=2)
         os.replace(tmp, path)
+
+    # --- WebUI Admin Bootstrap ---
+    async def bootstrap_agent_webui(self, agent_id: int) -> dict:
+        """Bootstrap the default admin user on an agent's WebUI.
+
+        Calls the internal login endpoint which triggers
+        ``bootstrapDefaultSuperAdmin()`` when no users exist yet.
+        """
+        service_name = deployment_name(agent_id)
+        url = f"http://{service_name}.{self.namespace}.svc.cluster.local:6060/api/auth/login"
+        payload = {"username": "admin", "password": "123456"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    return {"agent_number": agent_id, "success": True,
+                            "detail": "admin user bootstrapped", "token": body.get("token", "")}
+                return {"agent_number": agent_id, "success": False,
+                        "detail": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+        except Exception as e:
+            return {"agent_number": agent_id, "success": False, "detail": str(e)}
+
+    async def bootstrap_all_agents_webui(self) -> list[dict]:
+        """Bootstrap WebUI admin users for all running agents."""
+        deps = await self.k8s.list_deployments()
+        agent_nums = []
+        for dep in deps:
+            name = dep.metadata.name
+            m = re.fullmatch(r"hermes-gateway(?:-(\d+))?", name)
+            if not m:
+                continue
+            replicas = dep.spec.replicas or 0
+            available = dep.status.available_replicas or 0
+            if available >= replicas and replicas > 0:
+                agent_nums.append(int(m.group(1) or 0))
+
+        results = await asyncio.gather(
+            *[self.bootstrap_agent_webui(n) for n in agent_nums],
+            return_exceptions=True,
+        )
+        return [
+            r if not isinstance(r, Exception) else {"agent_number": n, "success": False, "detail": str(r)}
+            for n, r in zip(agent_nums, results)
+        ]
+
+    async def migrate_agent_providers(self, agent_number: int) -> dict:
+        """Migrate a single agent's config.yaml from custom_providers/legacy to providers dict.
+
+        Reads .env for the API key and model.base_url for the URL.
+        Writes providers dict in v0.15.x canonical format.
+        """
+        agent_dir = self.config_mgr._agent_dir(agent_number)
+        config_path = os.path.join(agent_dir, "config.yaml")
+        if not os.path.isfile(config_path):
+            return {"agent_number": agent_number, "success": False, "detail": "no config.yaml"}
+
+        with open(config_path) as f:
+            config_data = yaml.safe_load(f) or {}
+
+        # Skip if already has providers dict
+        if isinstance(config_data.get("providers"), dict) and config_data["providers"]:
+            return {"agent_number": agent_number, "success": True, "detail": "already has providers"}
+
+        model_block = config_data.get("model") or {}
+        provider = (model_block.get("provider") or "").strip()
+        base_url = (model_block.get("base_url") or "").strip()
+        default_model = (model_block.get("default") or "").strip()
+
+        if provider != "custom" or not base_url:
+            return {
+                "agent_number": agent_number,
+                "success": True,
+                "detail": f"skipped (provider={provider}, non-custom or no base_url)",
+            }
+
+        # Read API key from .env
+        env_raw = self.config_mgr.read_env_raw(agent_number)
+        # "custom" maps to OPENAI_API_KEY via PROVIDER_KEY_MAP
+        env_key = PROVIDER_KEY_MAP.get(provider) or "OPENAI_API_KEY"
+        api_key = env_raw.get(env_key, "")
+
+        # Build providers dict (v0.15.x canonical format)
+        provider_entry: dict = {
+            "api": base_url.rstrip("/"),
+            "default_model": default_model,
+        }
+        if api_key and api_key.strip():
+            provider_entry["api_key"] = api_key.strip()
+
+        config_data["providers"] = {"default": provider_entry}
+
+        # Remove legacy custom_providers if present
+        config_data.pop("custom_providers", None)
+
+        # Write back atomically
+        tmp_path = config_path + ".tmp"
+        with open(tmp_path, "w") as f:
+            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True, Dumper=yaml.SafeDumper)
+        os.replace(tmp_path, config_path)
+
+        return {
+            "agent_number": agent_number,
+            "success": True,
+            "detail": f"migrated (api={base_url.rstrip('/')}, model={default_model})",
+        }
+
+    async def migrate_all_providers(self) -> list[dict]:
+        """Migrate all existing agent configs to providers dict format."""
+        agents = await self.list_agents()
+        agent_nums = [a.id for a in agents.agents]
+        results = await asyncio.gather(
+            *(self.migrate_agent_providers(n) for n in agent_nums),
+            return_exceptions=True,
+        )
+        return [
+            r if not isinstance(r, Exception) else {"agent_number": n, "success": False, "detail": str(r)}
+            for n, r in zip(agent_nums, results)
+        ]

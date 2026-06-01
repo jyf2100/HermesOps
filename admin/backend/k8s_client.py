@@ -166,6 +166,34 @@ class K8sClient:
                 return pod.metadata.name
         return None
 
+    async def get_pod_log(
+        self,
+        deployment_name: str,
+        container: str = "gateway",
+        tail_lines: int | None = None,
+        since_seconds: int | None = None,
+    ) -> str | None:
+        """Fetch pod log as a single string (non-streaming).
+
+        Returns None if no running pod is found.
+        """
+        pod_name = await self.get_first_pod_name(deployment_name)
+        if not pod_name:
+            return None
+        kwargs: dict = {
+            "name": pod_name,
+            "namespace": self.namespace,
+            "container": container,
+            "_preload_content": True,
+        }
+        if tail_lines is not None:
+            kwargs["tail_lines"] = tail_lines
+        if since_seconds is not None:
+            kwargs["since_seconds"] = since_seconds
+        return await self._k8s_call(
+            self.core_api.read_namespaced_pod_log, **kwargs
+        )
+
     # Events
     async def get_events(self, deployment_name: str) -> list:
         pods = await self.get_pods_for_deployment(deployment_name)
