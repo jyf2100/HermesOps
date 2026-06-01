@@ -4,7 +4,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid, desc, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -312,3 +312,72 @@ class InspectionAnomaly(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AlertRule(Base):
+    __tablename__ = "alert_rules"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('alert', 'restart_pod', 'scale_resources')",
+            name="ck_alert_rule_action",
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+    enabled = Column(Boolean, default=True, server_default="true")
+    anomaly_type = Column(String(50), nullable=False)
+    severity_filter = Column(ARRAY(String(20)), nullable=False, server_default="'{}'")
+    agent_numbers = Column(ARRAY(Integer), nullable=False, server_default="'{}'")
+    action = Column(String(20), nullable=False)
+    cooldown_seconds = Column(Integer, default=600, server_default="600")
+    scale_cpu_millicores = Column(Integer, nullable=True)
+    scale_memory_mb = Column(Integer, nullable=True)
+    created_by = Column(String(100), default="admin", server_default="admin")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AlertRecord(Base):
+    __tablename__ = "alert_records"
+    __table_args__ = (
+        CheckConstraint(
+            "action_taken IN ('alert', 'restart_pod', 'scale_resources', 'skipped_cooldown', 'skipped_disabled', 'executing')",
+            name="ck_alert_record_action",
+        ),
+        Index("ix_alert_records_rule", "rule_id"),
+        Index("ix_alert_records_triggered", desc("triggered_at")),
+        Index("ix_alert_records_agent", "agent_number", desc("triggered_at")),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    rule_id = Column(BigInteger, ForeignKey("alert_rules.id", ondelete="SET NULL"), nullable=True)
+    anomaly_id = Column(BigInteger, ForeignKey("inspection_anomalies.id", ondelete="SET NULL"), nullable=True)
+    agent_number = Column(Integer, nullable=False)
+    action_taken = Column(String(20), nullable=False)
+    action_result = Column(JSONB, default=dict, server_default="{}", nullable=False)
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LogEntry(Base):
+    """Collected log lines from agent pods (Phase 3 monitoring)."""
+    __tablename__ = "log_entries"
+    __table_args__ = (
+        Index("ix_logs_agent_collected", "agent_number", desc("collected_at")),
+        Index("ix_logs_batch", "batch_id"),
+        Index(
+            "ix_logs_error",
+            "is_error",
+            desc("collected_at"),
+            postgresql_where=text("is_error = true"),
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    batch_id = Column(Uuid, nullable=False, default=uuid4, server_default=func.gen_random_uuid())
+    agent_number = Column(Integer, nullable=False)
+    content_hash = Column(String(64), nullable=False)
+    content = Column(Text, nullable=False)
+    level = Column(String(10), nullable=True)
+    is_error = Column(Boolean, default=False, server_default="false")
+    collected_at = Column(DateTime(timezone=True), server_default=func.now())

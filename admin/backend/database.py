@@ -346,6 +346,116 @@ _MIGRATION_SQL: list[str] = [
       ON inspection_anomalies (agent_number, anomaly_type)
       WHERE status = 'active'
     """,
+    # --- Alert Rules (Phase 2 monitoring) ---
+    """
+    CREATE TABLE IF NOT EXISTS alert_rules (
+        id BIGSERIAL PRIMARY KEY,
+        name VARCHAR(100) UNIQUE NOT NULL,
+        enabled BOOLEAN DEFAULT true NOT NULL,
+        anomaly_type VARCHAR(50) NOT NULL,
+        severity_filter VARCHAR(20)[] DEFAULT '{}' NOT NULL,
+        agent_numbers INTEGER[] DEFAULT '{}' NOT NULL,
+        action VARCHAR(20) NOT NULL,
+        cooldown_seconds INTEGER DEFAULT 600,
+        scale_cpu_millicores INTEGER,
+        scale_memory_mb INTEGER,
+        created_by VARCHAR(100) DEFAULT 'admin',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    """
+    ALTER TABLE alert_rules DROP CONSTRAINT IF EXISTS ck_alert_rule_action
+    """,
+    """
+    ALTER TABLE alert_rules ADD CONSTRAINT ck_alert_rule_action
+      CHECK (action IN ('alert', 'restart_pod', 'scale_resources'))
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS alert_records (
+        id BIGSERIAL PRIMARY KEY,
+        rule_id BIGINT,
+        anomaly_id BIGINT,
+        agent_number INTEGER NOT NULL,
+        action_taken VARCHAR(20) NOT NULL,
+        action_result JSONB DEFAULT '{}' NOT NULL,
+        triggered_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    # FK with ON DELETE SET NULL — idempotent via DO block
+    """
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_alert_records_rule_id') THEN
+        ALTER TABLE alert_records
+          ADD CONSTRAINT fk_alert_records_rule_id
+          FOREIGN KEY (rule_id) REFERENCES alert_rules(id)
+          ON DELETE SET NULL;
+      END IF;
+    END
+    $$;
+    """,
+    """
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_alert_records_anomaly_id') THEN
+        ALTER TABLE alert_records
+          ADD CONSTRAINT fk_alert_records_anomaly_id
+          FOREIGN KEY (anomaly_id) REFERENCES inspection_anomalies(id)
+          ON DELETE SET NULL;
+      END IF;
+    END
+    $$;
+    """,
+    """
+    ALTER TABLE alert_records DROP CONSTRAINT IF EXISTS ck_alert_record_action
+    """,
+    """
+    ALTER TABLE alert_records ADD CONSTRAINT ck_alert_record_action
+      CHECK (action_taken IN ('alert', 'restart_pod', 'scale_resources', 'skipped_cooldown', 'skipped_disabled', 'executing'))
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_alert_records_rule ON alert_records (rule_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_alert_records_triggered ON alert_records (triggered_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_alert_records_agent ON alert_records (agent_number, triggered_at DESC)
+    """,
+    # --- Log entries (Phase 3 monitoring) ---
+    """
+    CREATE EXTENSION IF NOT EXISTS pg_trgm
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS log_entries (
+        id BIGSERIAL PRIMARY KEY,
+        batch_id UUID NOT NULL DEFAULT gen_random_uuid(),
+        agent_number INTEGER NOT NULL,
+        content_hash VARCHAR(64) NOT NULL,
+        content TEXT NOT NULL,
+        level VARCHAR(10),
+        is_error BOOLEAN DEFAULT false,
+        collected_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_logs_agent_collected
+      ON log_entries (agent_number, collected_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_logs_batch
+      ON log_entries (batch_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_logs_error
+      ON log_entries (is_error, collected_at DESC)
+      WHERE is_error = true
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_logs_content_trgm
+      ON log_entries USING gin (content gin_trgm_ops)
+    """,
 ]
 
 _CLEANUP_SQL: list[str] = [
@@ -354,6 +464,8 @@ _CLEANUP_SQL: list[str] = [
     "DELETE FROM dispatch_tasks WHERE created_at < NOW() - INTERVAL '90 days' AND status IN ('completed', 'failed', 'cancelled')",
     "DELETE FROM inspection_snapshots WHERE created_at < NOW() - INTERVAL '7 days'",
     "DELETE FROM inspection_anomalies WHERE status IN ('resolved', 'ignored') AND resolved_at < NOW() - INTERVAL '90 days'",
+    "DELETE FROM alert_records WHERE triggered_at < NOW() - INTERVAL '90 days'",
+    "DELETE FROM log_entries WHERE collected_at < NOW() - INTERVAL '7 days'",
 ]
 
 

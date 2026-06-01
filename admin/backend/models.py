@@ -798,3 +798,130 @@ class MonitorSummary(BaseModel):
     last_inspection_at: datetime.datetime | None = None
     inspection_healthy: bool = True
     agent_health_summary: dict  # {running, stopped, failed, degraded}
+
+
+# ---------------------------------------------------------------------------
+# Alert Rules (Phase 2 monitoring)
+# ---------------------------------------------------------------------------
+
+class AlertRuleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    enabled: bool = True
+    anomaly_type: str = Field(..., min_length=1, max_length=50)
+    severity_filter: list[str] = Field(default_factory=list, max_length=10)
+    agent_numbers: list[int] = Field(default_factory=list, max_length=100)
+    action: Literal["alert", "restart_pod", "scale_resources"]
+    cooldown_seconds: int = Field(600, ge=60, le=86400)
+    scale_cpu_millicores: int | None = Field(None, ge=100, le=4000)
+    scale_memory_mb: int | None = Field(None, ge=128, le=8192)
+
+
+class AlertRuleUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    enabled: bool | None = None
+    anomaly_type: str | None = Field(None, min_length=1, max_length=50)
+    severity_filter: list[str] | None = Field(None, max_length=10)
+    agent_numbers: list[int] | None = Field(None, max_length=100)
+    action: Literal["alert", "restart_pod", "scale_resources"] | None = None
+    cooldown_seconds: int | None = Field(None, ge=60, le=86400)
+    scale_cpu_millicores: int | None = Field(None, ge=100, le=4000)
+    scale_memory_mb: int | None = Field(None, ge=128, le=8192)
+
+
+class AlertRuleResponse(BaseModel):
+    id: int
+    name: str
+    enabled: bool
+    anomaly_type: str
+    severity_filter: list[str]
+    agent_numbers: list[int]
+    action: str
+    cooldown_seconds: int
+    scale_cpu_millicores: int | None
+    scale_memory_mb: int | None
+    created_by: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class AlertRuleListResponse(BaseModel):
+    rules: list[AlertRuleResponse]
+    total: int
+
+
+class AlertRecordResponse(BaseModel):
+    id: int
+    rule_id: int | None
+    anomaly_id: int | None
+    agent_number: int
+    action_taken: str
+    action_result: dict = {}
+    triggered_at: datetime.datetime
+
+
+class AlertRecordListResponse(BaseModel):
+    records: list[AlertRecordResponse]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Log Collection (Phase 3 monitoring)
+# ---------------------------------------------------------------------------
+
+class LogSearchRequest(BaseModel):
+    keywords: str = Field("", max_length=200)
+    agents: list[int] = Field(default_factory=list, max_length=50)
+    level: str | None = Field(None, pattern=r"^(ERROR|WARN|INFO|DEBUG)$")
+    time_from: datetime.datetime | None = None
+    time_to: datetime.datetime | None = None
+    page: int = Field(1, ge=1)
+    page_size: int = Field(20, ge=1, le=100)
+
+
+class LogEntryResponse(BaseModel):
+    id: int
+    batch_id: str
+    agent_number: int
+    content: str
+    level: str | None
+    is_error: bool
+    collected_at: datetime.datetime
+
+
+class LogSearchResponse(BaseModel):
+    entries: list[LogEntryResponse]
+    total: int
+    page: int
+    page_size: int
+    elapsed_ms: float = 0
+
+
+class LogStatsAgent(BaseModel):
+    agent_number: int
+    error_count: int
+    total_count: int
+    last_collected_at: datetime.datetime | None
+
+
+class LogStatsResponse(BaseModel):
+    agents: list[LogStatsAgent]
+    total_entries: int
+    total_errors: int
+    retention_days: int = 7
+
+
+# ---------------------------------------------------------------------------
+# WebUI Bootstrap
+# ---------------------------------------------------------------------------
+
+class WebuiBootstrapResult(BaseModel):
+    agent_number: int
+    success: bool
+    detail: str = ""
+
+
+class WebuiBootstrapResponse(BaseModel):
+    results: list[WebuiBootstrapResult]
+    total: int
+    bootstrapped: int
+    skipped: int
