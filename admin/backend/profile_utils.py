@@ -153,6 +153,44 @@ async def sync_profile_to_pod(
 
         # Build resolved config: DEFAULT → template → profile
         merged = build_resolved_config(profile, template)
+
+        # Inherit providers from parent agent config if not already present
+        if "providers" not in merged:
+            try:
+                parent_raw, _ = await k8s.read_file_from_pod(
+                    pod_name, "/home/agent/.hermes/config.yaml",
+                )
+                if parent_raw:
+                    parent_data = yaml.safe_load(parent_raw.decode("utf-8")) or {}
+                    parent_providers = parent_data.get("providers")
+                    if isinstance(parent_providers, dict) and parent_providers:
+                        merged["providers"] = parent_providers
+                    else:
+                        # Fallback: try legacy custom_providers and convert
+                        legacy_cp = parent_data.get("custom_providers")
+                        if isinstance(legacy_cp, list) and legacy_cp:
+                            providers = {}
+                            for entry in legacy_cp:
+                                if isinstance(entry, dict):
+                                    name = entry.get("name", "default")
+                                    p_entry = {}
+                                    if entry.get("base_url"):
+                                        p_entry["api"] = entry["base_url"].rstrip("/")
+                                    if entry.get("model"):
+                                        p_entry["default_model"] = entry["model"]
+                                    if entry.get("api_key", "").strip():
+                                        p_entry["api_key"] = entry["api_key"].strip()
+                                    if p_entry:
+                                        providers[name] = p_entry
+                            if providers:
+                                merged["providers"] = providers
+            except Exception:
+                logger.warning(
+                    "Could not read parent config for agent %d, profiles may lack providers",
+                    agent_number,
+                    exc_info=True,
+                )
+
         soul_md = get_resolved_soul_md(profile, template)
 
         # Idempotency check
@@ -167,6 +205,20 @@ async def sync_profile_to_pod(
         )
         config_path = f"/home/agent/.hermes/profiles/{profile.profile_name}/config.yaml"
         await k8s.write_file_to_pod(pod_name, config_path, config_content.encode("utf-8"))
+
+        # Copy parent .env to profile directory (for key_env resolution)
+        profile_env_path = f"/home/agent/.hermes/profiles/{profile.profile_name}/.env"
+        try:
+            parent_env_raw, env_err = await k8s.read_file_from_pod(
+                pod_name, "/home/agent/.hermes/.env",
+            )
+            if not env_err and parent_env_raw:
+                await k8s.write_file_to_pod(pod_name, profile_env_path, parent_env_raw)
+        except Exception:
+            logger.warning(
+                "Could not copy .env to profile dir for agent %d", agent_number,
+                exc_info=True,
+            )
 
         # Write SOUL.md
         if soul_md:

@@ -37,7 +37,7 @@ from profile_utils import (
     profile_to_dict,
     sync_profile_to_pod,
 )
-from templates import deployment_name
+from templates import PROVIDER_KEY_MAP, deployment_name
 
 logger = logging.getLogger(__name__)
 
@@ -926,11 +926,31 @@ async def generate_soul_from_agent(request: Request, req: GenerateSoulFromAgentR
     if not provider or not model_name:
         raise HTTPException(status_code=422, detail=f"Agent {req.agent_number} config.yaml missing provider or model")
 
-    # Read .env for API key
+    # Resolve API key: .env via PROVIDER_KEY_MAP → config.yaml providers → config.yaml custom_providers
     env_raw = cfg.read_env_raw(req.agent_number)
-    api_key = env_raw.get("OPENAI_API_KEY") or env_raw.get("ANTHROPIC_API_KEY") or ""
+    env_key = PROVIDER_KEY_MAP.get(provider)
+    api_key = env_raw.get(env_key, "") if env_key else ""
     if not api_key:
-        raise HTTPException(status_code=422, detail=f"Agent {req.agent_number} has no API key in .env")
+        # Fallback: providers dict in config.yaml (v0.15.x format)
+        providers_section = config_data.get("providers")
+        if isinstance(providers_section, dict):
+            for _pkey, pentry in providers_section.items():
+                if isinstance(pentry, dict) and pentry.get("api_key", "").strip():
+                    api_key = pentry["api_key"].strip()
+                    break
+    if not api_key:
+        # Fallback: legacy custom_providers list in config.yaml
+        legacy_cp = config_data.get("custom_providers")
+        if isinstance(legacy_cp, list):
+            for entry in legacy_cp:
+                if isinstance(entry, dict) and entry.get("api_key", "").strip():
+                    api_key = entry["api_key"].strip()
+                    break
+    if not api_key:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Agent {req.agent_number} has no API key in .env or config for provider '{provider}'",
+        )
 
     async with _generate_semaphore:
         system_prompt = _GENERATE_SOUL_SYSTEM_PROMPT.format(

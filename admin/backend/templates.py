@@ -139,15 +139,16 @@ class TemplateGenerator:
                 "message_bus": swarm_redis_url,
                 "heartbeat_interval": 30,
             }
-        # Generate custom_providers for hermes-web-ui model discovery
+        # Generate providers dict for v0.15.x (replaces legacy custom_providers list)
         _placeholder = PROVIDER_URL_MAP.get("custom")
         if provider == "custom" and resolved_url and resolved_url != _placeholder:
-            config_data["custom_providers"] = [{
-                "name": "default",
-                "base_url": resolved_url.rstrip("/"),
-                "model": default_model,
-                "api_key": api_key or "",
-            }]
+            provider_entry: dict = {
+                "api": resolved_url.rstrip("/"),
+                "default_model": default_model,
+            }
+            if api_key and api_key.strip():
+                provider_entry["api_key"] = api_key.strip()
+            config_data["providers"] = {"default": provider_entry}
         return yaml.dump(config_data, default_flow_style=False, allow_unicode=True)
 
     def render_service(self, agent_number: int, namespace: str = "hermes-agent") -> dict:
