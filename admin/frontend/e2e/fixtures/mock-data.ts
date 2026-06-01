@@ -1037,3 +1037,244 @@ export const mockInspectionHistory = {
   ],
   total: 2,
 };
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Alert Rules
+// ---------------------------------------------------------------------------
+
+export const mockAlertRules: import("../../src/lib/admin-api").AlertRule[] = [
+  {
+    id: 1,
+    name: "High CPU Alert",
+    enabled: true,
+    anomaly_type: "high_cpu",
+    severity_filter: ["critical", "warning"],
+    agent_numbers: [],
+    action: "alert",
+    cooldown_seconds: 300,
+    scale_cpu_millicores: null,
+    scale_memory_mb: null,
+    created_by: "admin",
+    created_at: "2026-05-26T08:00:00Z",
+    updated_at: "2026-05-26T08:00:00Z",
+  },
+  {
+    id: 2,
+    name: "Health Down Restart",
+    enabled: false,
+    anomaly_type: "health_down",
+    severity_filter: ["critical"],
+    agent_numbers: [1, 3],
+    action: "restart_pod",
+    cooldown_seconds: 600,
+    scale_cpu_millicores: null,
+    scale_memory_mb: null,
+    created_by: "admin",
+    created_at: "2026-05-26T09:00:00Z",
+    updated_at: "2026-05-26T09:00:00Z",
+  },
+  {
+    id: 3,
+    name: "Auto Scale Memory",
+    enabled: true,
+    anomaly_type: "high_memory",
+    severity_filter: ["warning"],
+    agent_numbers: [2],
+    action: "scale_resources",
+    cooldown_seconds: 900,
+    scale_cpu_millicores: 500,
+    scale_memory_mb: 2048,
+    created_by: "admin",
+    created_at: "2026-05-26T10:00:00Z",
+    updated_at: "2026-05-26T10:00:00Z",
+  },
+];
+
+export const mockAlertRuleListResponse = { rules: mockAlertRules, total: 3 };
+export const mockAlertRuleEmptyResponse = { rules: [], total: 0 };
+
+export const mockCreatedAlertRule: import("../../src/lib/admin-api").AlertRule = {
+  id: 4,
+  name: "New Test Rule",
+  enabled: true,
+  anomaly_type: "high_cpu",
+  severity_filter: ["critical"],
+  agent_numbers: [],
+  action: "alert",
+  cooldown_seconds: 300,
+  scale_cpu_millicores: null,
+  scale_memory_mb: null,
+  created_by: "admin",
+  created_at: "2026-05-27T08:00:00Z",
+  updated_at: "2026-05-27T08:00:00Z",
+};
+
+export const mockUpdatedAlertRule: import("../../src/lib/admin-api").AlertRule = {
+  ...mockAlertRules[0],
+  name: "Updated Rule Name",
+  enabled: false,
+};
+
+// ---------------------------------------------------------------------------
+// Phase 2 — Alert Records
+// ---------------------------------------------------------------------------
+
+export const mockAlertRecords: import("../../src/lib/admin-api").AlertRecord[] = [
+  {
+    id: 1,
+    rule_id: 1,
+    anomaly_id: 1,
+    agent_number: 1,
+    action_taken: "alert",
+    action_result: { status: "success", message: "Notification sent" },
+    triggered_at: "2026-05-26T09:15:00Z",
+  },
+  {
+    id: 2,
+    rule_id: 2,
+    anomaly_id: 2,
+    agent_number: 3,
+    action_taken: "restart_pod",
+    action_result: { status: "success", message: "Pod restarted" },
+    triggered_at: "2026-05-26T09:10:00Z",
+  },
+  {
+    id: 3,
+    rule_id: 1,
+    anomaly_id: 3,
+    agent_number: 1,
+    action_taken: "none",
+    action_result: { status: "cooldown", message: "Within cooldown period" },
+    triggered_at: "2026-05-26T09:05:00Z",
+  },
+  {
+    id: 4,
+    rule_id: null,
+    anomaly_id: 4,
+    agent_number: 2,
+    action_taken: "alert",
+    action_result: { status: "error", message: "Notification channel unavailable" },
+    triggered_at: "2026-05-26T08:55:00Z",
+  },
+  {
+    id: 5,
+    rule_id: 1,
+    anomaly_id: 5,
+    agent_number: 3,
+    action_taken: "scale_resources",
+    action_result: { status: "executing", message: "Scaling in progress" },
+    triggered_at: "2026-05-26T08:50:00Z",
+  },
+];
+
+export const mockAlertRecordListResponse = {
+  records: mockAlertRecords,
+  total: 5,
+};
+
+export const mockAlertRecordEmptyResponse = {
+  records: [],
+  total: 0,
+};
+
+// Generate 25 alert records for pagination testing
+export const mockAlertRecordsPaged: import("../../src/lib/admin-api").AlertRecord[] = [];
+for (let i = 1; i <= 25; i++) {
+  const statuses = ["success", "error", "skipped", "cooldown"] as const;
+  mockAlertRecordsPaged.push({
+    id: i,
+    rule_id: i <= 3 ? i : null,
+    anomaly_id: i,
+    agent_number: (i % 3) + 1,
+    action_taken: i % 2 === 0 ? "alert" : "restart_pod",
+    action_result: { status: statuses[i % 4], message: `Result for record ${i}` },
+    triggered_at: new Date(Date.now() - i * 3600_000).toISOString(),
+  });
+}
+
+export const mockAlertRecordPagedResponse = {
+  records: mockAlertRecordsPaged,
+  total: 25,
+};
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Log Search
+// ---------------------------------------------------------------------------
+
+export const mockLogEntries: import("../../src/lib/admin-api").LogEntry[] = [
+  {
+    id: 1,
+    batch_id: "batch-001",
+    agent_number: 1,
+    content: "Starting hermes gateway on port 8642",
+    level: "INFO",
+    is_error: false,
+    collected_at: "2026-05-26T09:00:00Z",
+  },
+  {
+    id: 2,
+    batch_id: "batch-001",
+    agent_number: 1,
+    content: "Connection error: timeout waiting for upstream response",
+    level: "ERROR",
+    is_error: true,
+    collected_at: "2026-05-26T09:01:00Z",
+  },
+  {
+    id: 3,
+    batch_id: "batch-001",
+    agent_number: 3,
+    content: "Memory usage warning: 85% of limit reached",
+    level: "WARN",
+    is_error: false,
+    collected_at: "2026-05-26T09:02:00Z",
+  },
+  {
+    id: 4,
+    batch_id: "batch-002",
+    agent_number: 2,
+    content: "Debug: processing message queue",
+    level: "DEBUG",
+    is_error: false,
+    collected_at: "2026-05-26T09:03:00Z",
+  },
+];
+
+export const mockLogSearchResponse = {
+  entries: mockLogEntries,
+  total: 4,
+  page: 1,
+  page_size: 20,
+  elapsed_ms: 42,
+};
+
+export const mockLogSearchEmptyResponse = {
+  entries: [],
+  total: 0,
+  page: 1,
+  page_size: 20,
+  elapsed_ms: 5,
+};
+
+// Generate 25 log entries for pagination testing
+export const mockLogEntriesPaged: import("../../src/lib/admin-api").LogEntry[] = [];
+for (let i = 1; i <= 25; i++) {
+  const levels = ["INFO", "ERROR", "WARN", "DEBUG"] as const;
+  mockLogEntriesPaged.push({
+    id: i,
+    batch_id: `batch-paged-${Math.ceil(i / 5)}`,
+    agent_number: (i % 3) + 1,
+    content: `Log entry ${i}: ${levels[i % 4]} level message from agent ${(i % 3) + 1}`,
+    level: levels[i % 4],
+    is_error: levels[i % 4] === "ERROR",
+    collected_at: new Date(Date.now() - i * 600_000).toISOString(),
+  });
+}
+
+export const mockLogSearchPagedResponse = {
+  entries: mockLogEntriesPaged.slice(0, 20),
+  total: 25,
+  page: 1,
+  page_size: 20,
+  elapsed_ms: 38,
+};

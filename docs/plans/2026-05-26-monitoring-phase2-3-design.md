@@ -1,9 +1,10 @@
 # 监控功能第二三期详细设计
 
 > 日期：2026-05-26
-> 状态：设计完成，待实现
+> 状态：设计完成（已整合专家评审），待实现
 > 前置：第一期已部署（批量巡检 + 异常面板 + 资源水位 + Dashboard badge）
-> 设计决策依据：brainstorming 对话确认
+> 设计决策依据：brainstorming 对话确认 + 三方专家评审（后端架构/前端架构/安全+K8s）
+> 评审修订记录：见文末附录
 
 ## 第二期：可配置告警规则 + 自动修复
 
@@ -23,9 +24,9 @@ CREATE TABLE alert_rules (
     -- 动作
     action VARCHAR(20) NOT NULL,              -- 'alert' | 'restart_pod' | 'scale_resources'
     cooldown_seconds INTEGER DEFAULT 600,     -- 同一规则同一 agent 冷却期
-    -- 扩容专用
-    scale_cpu_millicores INTEGER,             -- 扩容后 CPU limit
-    scale_memory_mb INTEGER,                  -- 扩容后 MEM limit
+    -- 扩容专用（有 ceiling 限制，见后端约束）
+    scale_cpu_millicores INTEGER,             -- 扩容后 CPU limit（上限 4000 = 4 cores）
+    scale_memory_mb INTEGER,                  -- 扩容后 MEM limit（上限 8192 = 8 GB）
     -- 审计
     created_by VARCHAR(100) DEFAULT 'admin',
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -73,21 +74,33 @@ CREATE INDEX ix_alert_records_agent ON alert_records (agent_number, triggered_at
 
 ```
 AlertEngine
-├── evaluate_rules(anomalies)    # 在 run_batch() 末尾调用
+├── evaluate_rules(anomalies)    # 在 run_batch() 末尾调用（try/except 包裹，失败不影响巡检）
 │   ├── 加载所有 enabled 的 alert_rules
 │   ├── 对每条 active anomaly 匹配规则
 │   │   ├── 匹配 anomaly_type
 │   │   ├── 匹配 severity_filter（空=全部）
 │   │   └── 匹配 agent_numbers（空=全部）
+│   ├── Per-agent dedup：同一 agent 多条规则命中时，只执行优先级最高的动作
+│   │   优先级：restart_pod > scale_resources > alert
+│   ├── 全局限流：MAX_CONCURRENT_AUTO_ACTIONS=2（同时只执行 2 个自动动作）
 │   ├── 检查 cooldown（查 alert_records 最近记录）
+│   ├── 检查 restart 速率限制：per-agent 最近 30min 内最多 3 次重启
 │   └── 执行动作
 │       ├── alert: 仅写 alert_records
-│       ├── restart_pod: k8s_client.delete_pod() + 写 alert_records
-│       └── scale_resources: k8s_client.patch_deployment() + 写 alert_records
-├── execute_restart(agent_number)   # 删 pod 触发 deployment 重建
-├── execute_scale(agent_number, cpu, mem)  # patch deployment spec
-└── check_cooldown(rule_id, agent_number)  # 查最近 alert_records
+│       ├── restart_pod: annotation patch（不删 pod）+ 写 alert_records
+│       └── scale_resources: patch deployment spec + 写 alert_records
+├── execute_restart(agent_number)   # annotation patch 触发 pod 重建（与 agent_manager 一致）
+├── execute_scale(agent_number, cpu, mem)  # patch deployment spec（ceiling ≤ 4 cores / 8 GB）
+├── check_cooldown(rule_id, agent_number)  # 查最近 alert_records
+└── _sanitize_log(text)             # 脱敏：过滤 API key、token 等敏感模式再写入记录
 ```
+
+**关键设计约束：**
+- `evaluate_rules()` 整体用 try/except 包裹，异常只记日志，不中断 `run_batch()`
+- `execute_restart` 使用 annotation patch（`kubectl.kubernetes.io/restartedAt`），而非 `delete_pod`，与现有 `agent_manager.update_resources()` 模式一致，无需额外 RBAC delete 权限
+- 扩容参数验证 ceiling：CPU ≤ 4000 millicores（4 cores），MEM ≤ 8192 MB（8 GB）
+- 全局并发限制 `MAX_CONCURRENT_AUTO_ACTIONS=2`，防止爆炸性连锁重启
+- Per-agent 速率限制：30 分钟内同一 agent 最多执行 3 次重启动作，防止 crash loop + auto-restart 无限循环
 
 #### API 端点
 
@@ -110,7 +123,8 @@ AlertEngine
 ```
 inspection.py run_batch()
   └── _resolve_old_anomalies()  → 返回新产生的 active anomalies
-  └── AlertEngine.evaluate_rules(new_anomalies)
+  └── try: AlertEngine.evaluate_rules(new_anomalies)
+      except: logger.warning("alert engine failed", exc_info=True)
   └── _maybe_cleanup()          → 顺带清理 90 天 alert_records
 ```
 
@@ -127,11 +141,13 @@ inspection.py run_batch()
 
 | 文件 | 变更 |
 |------|------|
-| `pages/MonitoringPage.tsx` | 新增 2 个 tab：Alert Rules / Alert Records，共 6 个 tab |
+| `pages/MonitoringPage.tsx` | 新增 Alerts 子 tab 组（Rules + Records），共 6 个 tab（4 主 + 2 子） |
 | `admin-api.ts` | 新增 AlertRule、AlertRecord 类型 + 5 个 API 方法 |
 | `i18n/en.ts` + `zh.ts` | 新增 `alert*` 翻译 key |
 
 #### AlertRulesTab 布局
+
+> **评审修改**：Agent 选择改为 Checkbox Group（☐ 全部 / ☐ 指定 agents），指定时用 Tag Input 模式而非自由文本。扩容参数增加上限提示。
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -153,8 +169,8 @@ inspection.py run_batch()
 │ 动作: [重启Pod ▼]                    │
 │ 冷却期: [600] 秒                     │
 │ ── 扩容专用 ──                       │
-│ CPU limit (millicores): [2000]       │
-│ Memory limit (MB): [2048]            │
+│ CPU limit (millicores): [2000] max 4000│
+│ Memory limit (MB): [2048] max 8192    │
 │               [取消] [保存]           │
 └──────────────────────────────────────┘
 ```
@@ -191,7 +207,7 @@ CREATE TABLE log_entries (
     batch_id UUID NOT NULL DEFAULT gen_random_uuid(),
     agent_number INTEGER NOT NULL,
     pod_name VARCHAR(200) NOT NULL,
-    line_number INTEGER NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,     -- 内容 SHA256 前 16 字符，用于增量去重
     content TEXT NOT NULL,
     level VARCHAR(10),                     -- INFO/WARN/ERROR/DEBUG（启发式提取）
     is_error BOOLEAN DEFAULT false,        -- 是否错误行
@@ -200,8 +216,9 @@ CREATE TABLE log_entries (
 CREATE INDEX ix_logs_agent_collected ON log_entries (agent_number, collected_at DESC);
 CREATE INDEX ix_logs_batch ON log_entries (batch_id);
 CREATE INDEX ix_logs_error ON log_entries (is_error, collected_at DESC) WHERE is_error = true;
--- 全文搜索索引
-CREATE INDEX ix_logs_content_fts ON log_entries USING gin(to_tsvector('simple', content));
+-- 模糊搜索索引（支持中英文）
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX ix_logs_content_trgm ON log_entries USING gin(content gin_trgm_ops);
 ```
 
 ### 5. 后端架构
@@ -230,25 +247,28 @@ LogCollector
 │   ├── _discover_running_agents()
 │   ├── asyncio.gather(           # Semaphore(3)
 │   │     _collect_one(agent)     # 并行收集
-│   │       ├── k8s.read_namespaced_pod_log(tail_lines=500)
-│   │       ├── _parse_lines()    # 提取 level、去重
-│   │       └── _persist_lines()  # 批量 INSERT
+│   │       ├── k8s.read_namespaced_pod_log(since_seconds=last_collected_timestamp)
+│   │       ├── _parse_lines()    # 提取 level、计算 content_hash
+│   │       ├── _dedup_lines()    # 按 content_hash 去重（对比最近 batch）
+│   │       └── _persist_lines()  # 批量 INSERT（仅新行）
 │   │   )
 │   └── _maybe_cleanup()          # 清理过期日志（可配置 LOG_RETENTION_DAYS）
 ├── search(params)                # 搜索接口
 │   ├── SQL: agent_number + 时间范围 + 关键词 + level
-│   ├── PostgreSQL to_tsvector 全文搜索
+│   ├── pg_trgm + ILIKE 模糊搜索（支持中英文）
 │   └── 返回分页结果
-└── export(params)                # 导出接口
-    └── 生成 CSV/JSON 文件到 /tmp，返回下载路径
+├── export(params)                # 导出接口
+│   └── 生成 CSV/JSON 文件到 /tmp，返回下载路径
+└── _sanitize_content(text)       # 日志脱敏：过滤 API key、token 等敏感模式再入库
 ```
 
 **设计要点：**
-- **增量收集**：每次只取 pod 日志最新 500 行，与上次 batch 对比去重（按行号+内容 hash）
+- **增量收集**：使用 `since_seconds` 参数只取上次收集之后的新日志，按 `content_hash`（SHA256 前 16 字符）去重，不依赖 `line_number`（pod 重启后行号重置）
 - **level 提取**：启发式匹配 `ERROR`/`WARN`/`INFO`/`DEBUG` 等常见日志前缀，无匹配则为 null
 - **is_error 标记**：包含 `Error`/`Exception`/`Traceback`/`CRITICAL` 关键词的行自动标记
-- **全文搜索**：PostgreSQL `to_tsvector('simple', content)` + GIN 索引，支持中英文
-- **保留策略**：可配置 `LOG_RETENTION_DAYS`（默认 7 天），在 `_maybe_cleanup` 中清理
+- **模糊搜索**：PostgreSQL `pg_trgm` + GIN 索引 + `ILIKE`，支持中英文模糊匹配（比 `to_tsvector('simple')` 中文支持更好）
+- **保留策略**：可配置 `LOG_RETENTION_DAYS`（默认 7 天），在 `_maybe_cleanup` 中清理；清理独立于 inspection schedule
+- **日志脱敏**：`_sanitize_content()` 过滤常见敏感模式（`sk-`、`key=`、`token=`、`Bearer `）再入库
 
 #### API 端点
 
@@ -271,7 +291,7 @@ LogCollector
 
 | 文件 | 变更 |
 |------|------|
-| `pages/MonitoringPage.tsx` | 新增 Logs tab，共 7 个 tab |
+| `pages/MonitoringPage.tsx` | 新增 Logs tab + Alerts 子 tab 组，共 5 主 + 2 子 tab |
 | `admin-api.ts` | 新增 LogSearchRequest、LogEntry、LogStats 类型 + 3 个 API 方法 |
 | `i18n/en.ts` + `zh.ts` | 新增 `log*` 翻译 key |
 
@@ -304,7 +324,7 @@ LogCollector
 ```
 
 **交互细节：**
-- 搜索按钮触发 `POST /monitor/logs/search`，结果高亮关键词（黄色背景）
+- 搜索按钮触发 `POST /monitor/logs/search`，结果高亮关键词用 React JSX `<mark>` 组件实现（禁止 `dangerouslySetInnerHTML`，防 XSS）
 - ERROR 行红色背景，WARN 行黄色背景，INFO 行默认
 - 导出按钮触发搜索 → 生成文件 → 自动下载
 - 时间范围快捷选项：最近 1h / 6h / 24h / 7d / 自定义
@@ -349,11 +369,15 @@ log_collector.py run_periodic()
 
 ---
 
-## MonitoringPage 最终 Tab 结构（7 tabs）
+## MonitoringPage 最终 Tab 结构（5 主 tab + 2 子 tab）
 
 ```
-[Overview] [Anomaly] [Resources] [Inspection] [Alert Rules] [Alert Records] [Logs]
+[Overview] [Anomaly] [Resources] [Inspection] [Alerts ▾] [Logs]
+                                              ├─ Rules
+                                              └─ Records
 ```
+
+> **评审修改**：7 个 tab 在窄屏溢出，Alert Rules + Alert Records 合并为 Alerts 子 tab 组，主 tab bar 加 `overflow-x-auto` 兜底。
 
 ## 构建序列
 
@@ -372,7 +396,7 @@ log_collector.py run_periodic()
 2. `admin-api.ts` — 类型 + API 方法
 3. `components/monitoring/AlertRulesTab.tsx`
 4. `components/monitoring/AlertRecordsTab.tsx`
-5. `pages/MonitoringPage.tsx` — 新增 2 个 tab
+5. `pages/MonitoringPage.tsx` — 新增 Alerts 子 tab 组（Rules + Records）
 
 ### 第三期（按顺序）
 
@@ -390,3 +414,38 @@ log_collector.py run_periodic()
 3. `components/monitoring/LogSearchTab.tsx`
 4. `components/monitoring/LogExportButton.tsx`
 5. `pages/MonitoringPage.tsx` — 新增 Logs tab
+
+---
+
+## 附录：专家评审修订记录
+
+> 三方评审：后端架构专家、前端架构专家、安全+K8s 专家
+> 以下问题已整合到正文设计中
+
+### CRITICAL 修复
+
+| # | 问题 | 修复方案 | 影响章节 |
+|---|------|---------|---------|
+| C1 | `restart_pod` 用 `delete_pod()` 但 RBAC 无 delete 权限 | 改用 annotation patch 模式，与 `agent_manager` 一致 | §2 AlertEngine |
+
+### HIGH 修复
+
+| # | 问题 | 修复方案 | 影响章节 |
+|---|------|---------|---------|
+| H1 | `evaluate_rules()` 异常中断 `run_batch()` | try/except 包裹，失败只记日志 | §2 调用链路 |
+| H2 | 多规则匹配同一 agent 触发重复重启 | Per-agent dedup，只执行最高优先级动作 | §2 AlertEngine |
+| H3 | `line_number` 去重不可靠（pod 重启行号重置） | 改用 `since_seconds` + `content_hash` 去重 | §4 log_entries |
+| H4 | `to_tsvector('simple')` 不支持中文 | 改用 `pg_trgm` + `ILIKE` | §4 log_entries, §5 LogCollector |
+| H5 | 7 个 tab 窄屏溢出 | Alert Rules+Records 合为 Alerts 子 tab 组，tab bar 加 `overflow-x-auto` | §3, §6, Tab 结构 |
+| H6 | 关键词高亮用 `dangerouslySetInnerHTML` 有 XSS 风险 | 改用 React JSX `<mark>` 组件 | §6 交互细节 |
+| H7 | 无爆炸半径限制 | `MAX_CONCURRENT_AUTO_ACTIONS=2` 全局限流 | §2 AlertEngine |
+| H8 | 扩容无上限 | CPU ≤ 4 cores, MEM ≤ 8GB ceiling | §1 alert_rules, §2 AlertEngine |
+
+### MEDIUM 修复
+
+| # | 问题 | 修复方案 | 影响章节 |
+|---|------|---------|---------|
+| M1 | crash loop + auto-restart 无限循环 | Per-agent 30min 内最多 3 次重启 | §2 AlertEngine |
+| M2 | 日志含 secrets（API key 等） | `_sanitize_content()` 过滤敏感模式 | §5 LogCollector |
+| M3 | `alert_records` 清理依赖 inspection schedule | 独立定时清理（备注） | §2 调用链路 |
+| M4 | Agent 选择交互不明确 | Checkbox Group + Tag Input 模式 | §3 AlertRulesTab |
