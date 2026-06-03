@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, shell, ipcMain, nativeImage } from 'electron'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { startWebUiServer, getToken, getServerProc } from './webui-server'
 import { desktopIcon, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin } from './paths'
