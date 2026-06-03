@@ -46,6 +46,10 @@ hermes-dependencies.md
 *.sw?
 .superpowers/
 CLAUDE.md
+# .claude 目录 - 选择性跟踪 docs 和 skills，忽略其余
+.claude/*
+!.claude/docs/
+!.claude/skills/
 # Client source map artifacts
 packages/client/src/**/*.js
 .hermes/
