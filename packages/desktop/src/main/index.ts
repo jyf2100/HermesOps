@@ -331,6 +331,8 @@ function runDesktopApp() {
       },
     })
     app.on('activate', () => {
+      // Don't re-create a window during shutdown.
+      if (isQuitting) return
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow()
       } else if (mainWindow) {
