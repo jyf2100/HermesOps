@@ -346,11 +346,17 @@ function runDesktopApp() {
     if (isQuitting) app.quit()
   })
 
+  // Mark that we're quitting so the window 'close' handler allows the window
+  // to be destroyed. On macOS, Cmd+Q triggers before-quit directly (not via
+  // quitApp), so isQuitting would still be false without this handler.
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
   // 'will-quit' fires after all windows are closed and the app is about to
-  // exit. Unlike 'before-quit', it is NOT re-emitted if we call preventDefault
-  // on the close event, so it's a safer place to clean up the server process.
-  // We intentionally do NOT make this handler async — Electron won't await it,
-  // so we use a synchronous kill and let the process tree die with us.
+  // exit. We use this instead of an async before-quit handler because
+  // Electron does not await async event handlers, which caused crashes.
+  // Synchronous kill ensures cleanup completes before exit.
   app.on('will-quit', () => {
     const proc = getServerProc()
     if (proc && !proc.killed) {
