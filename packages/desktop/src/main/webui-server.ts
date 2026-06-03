@@ -28,6 +28,11 @@ const AGENT_BRIDGE_FAILED_MARKER = '[bootstrap] agent bridge failed to start'
 const execFileAsync = promisify(execFile)
 
 let serverProc: ChildProcess | null = null
+
+/** Expose the server process so the main process can kill it synchronously on quit. */
+export function getServerProc(): ChildProcess | null {
+  return serverProc
+}
 let cachedToken: string | null = null
 
 function killProcessTree(proc: ChildProcess): void {

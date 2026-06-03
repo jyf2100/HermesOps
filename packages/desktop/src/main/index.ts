@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, shell, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { startWebUiServer, stopWebUiServer, getToken } from './webui-server'
+import { startWebUiServer, getToken, getServerProc } from './webui-server'
 import { desktopIcon, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin } from './paths'
 import { checkForDesktopUpdates, initAutoUpdater } from './updater'
 import { t } from './desktop-i18n'
@@ -339,19 +339,33 @@ function runDesktopApp() {
   })
 
   app.on('window-all-closed', () => {
-    if (isQuitting && process.platform !== 'darwin') app.quit()
+    // On macOS, keep the app running (tray-only) when all windows close.
+    // On Windows/Linux, if we're actually quitting, let the app exit.
+    // Otherwise (e.g. last window closed unexpectedly), stay alive via tray.
+    if (isQuitting) app.quit()
   })
 
-  app.on('before-quit', async (e) => {
-    if (!isQuitting && process.platform !== 'darwin') {
-      e.preventDefault()
-      mainWindow?.hide()
-      updateTrayMenu()
-      return
+  // 'will-quit' fires after all windows are closed and the app is about to
+  // exit. Unlike 'before-quit', it is NOT re-emitted if we call preventDefault
+  // on the close event, so it's a safer place to clean up the server process.
+  // We intentionally do NOT make this handler async — Electron won't await it,
+  // so we use a synchronous kill and let the process tree die with us.
+  app.on('will-quit', () => {
+    const proc = getServerProc()
+    if (proc && !proc.killed) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          })
+        } else {
+          proc.kill('SIGKILL')
+        }
+      } catch {
+        // best-effort; app is exiting anyway
+      }
     }
-    e.preventDefault()
-    await stopWebUiServer().catch(() => undefined)
-    app.exit(0)
   })
 }
 
