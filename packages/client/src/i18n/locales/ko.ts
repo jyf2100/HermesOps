@@ -219,7 +219,7 @@ export default {
     nodeVersionWarning: 'Node.js v{version}이 감지되었습니다. 버전 23 이상으로 업그레이드하세요.',
     changelog: '변경 이력',
     noChangelog: '변경 이력이 없습니다',
-    kanban: '칸반',
+    kanban: '내 작업',
     groupTools: '도구',
     groupToolsShort: "도구",
     codingAgents: "코딩 에이전트",
@@ -840,6 +840,9 @@ export default {
       themeLight: '라이트',
       themeDark: '다크',
       themeSystem: '시스템',
+      styleLabel: '비주얼 스타일',
+      styleInk: '잉크',
+      styleComic: '코믹',
     },
     agent: {
       maxTurns: '최대 턴 수',

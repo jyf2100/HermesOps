@@ -9,6 +9,7 @@ import { AgentBridgeClient } from '../../services/hermes/agent-bridge'
 import {
   getGatewayRuntimeStatusForProfile,
   restartGatewayForProfile as restartGatewayRuntimeForProfile,
+  startGatewayForNewProfile,
 } from '../../services/hermes/gateway-autostart'
 import { logger } from '../../services/logger'
 import { smartCloneCleanup } from '../../services/hermes/profile-credentials'
@@ -439,9 +440,19 @@ export async function create(ctx: any) {
 
     await injectBundledSkillsForProfile(name)
 
+    let gatewayStarted = false
+    try {
+      const result = await startGatewayForNewProfile(name)
+      gatewayStarted = result.running
+      logger.info('[profiles] gateway auto-start for new profile "%s": running=%s', name, result.running)
+    } catch (err: any) {
+      logger.warn(err, '[profiles] gateway auto-start failed for new profile "%s"', name)
+    }
+
     ctx.body = {
       success: true,
       message: output.trim(),
+      gatewayStarted,
       strippedCredentials,
       disabledPlatforms,
       strippedConfigCredentials,

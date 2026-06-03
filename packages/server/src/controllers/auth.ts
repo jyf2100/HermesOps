@@ -22,6 +22,35 @@ import { issueUserJwt } from '../middleware/user-auth'
 import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
 
 /**
+ * GET /api/auth/auto-login
+ * When AUTO_LOGIN env var is set, issue a JWT for the first active user.
+ */
+export async function autoLogin(ctx: Context) {
+  if (!process.env.AUTO_LOGIN) {
+    ctx.status = 404
+    ctx.body = { error: 'Auto-login is not enabled' }
+    return
+  }
+
+  const users = listUsers()
+  if (users.length === 0) {
+    ctx.status = 401
+    ctx.body = { error: 'No users configured' }
+    return
+  }
+
+  const user = users.find(u => u.role === 'super_admin' && u.status === 'active') || users.find(u => u.status === 'active')
+  if (!user) {
+    ctx.status = 401
+    ctx.body = { error: 'No active user found' }
+    return
+  }
+
+  const token = await issueUserJwt(user)
+  ctx.body = { token }
+}
+
+/**
  * GET /api/auth/status
  * Check if username/password login is configured (public).
  */

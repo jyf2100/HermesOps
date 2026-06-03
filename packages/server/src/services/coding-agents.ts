@@ -1023,6 +1023,13 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
 
     const settingsPath = join(rootDir, 'settings.json')
     const mcpPath = join(rootDir, 'mcp.json')
+    // Pass API credentials as real environment variables in the shell command,
+    // so Claude Code's startup connectivity check uses ANTHROPIC_BASE_URL
+    // instead of the default api.anthropic.com (which fails in restricted networks).
+    env = {
+      ...(claudeApiKey ? { ANTHROPIC_API_KEY: claudeApiKey } : {}),
+      ...(claudeBaseUrl ? { ANTHROPIC_BASE_URL: claudeBaseUrl } : {}),
+    }
     args = ['--settings', settingsPath, '--mcp-config', mcpPath]
   } else {
     if (apiMode !== 'chat_completions' && apiMode !== 'codex_responses' && apiMode !== 'anthropic_messages') {

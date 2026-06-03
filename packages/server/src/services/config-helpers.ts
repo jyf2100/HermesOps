@@ -111,7 +111,13 @@ export function stripLegacyApiServerGatewayConfig(config: Record<string, any>): 
   }
 
   if (config.platforms.api_server !== undefined) {
-    delete config.platforms.api_server
+    const apiServer = config.platforms.api_server
+    const extra = apiServer?.extra
+    if (extra && typeof extra === 'object' && Object.keys(extra).length > 0) {
+      config.platforms.api_server = { extra }
+    } else {
+      delete config.platforms.api_server
+    }
     if (Object.keys(config.platforms).length === 0) delete config.platforms
     return { config, changed: true }
   }

@@ -1403,10 +1403,10 @@ onBeforeUnmount(() => {
   }
 
   .dark & {
-    color: #999999;
+    color: var(--text-muted);
 
     &:hover {
-      color: #cccccc;
+      color: var(--text-secondary);
       background: rgba(255, 255, 255, 0.1);
     }
   }
@@ -1439,7 +1439,7 @@ onBeforeUnmount(() => {
   user-select: none;
 
   .dark & {
-    color: #999999;
+    color: var(--text-muted);
   }
 }
 

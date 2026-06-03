@@ -4,6 +4,7 @@ import { requireSuperAdmin } from '../middleware/user-auth'
 
 // Public routes (no auth required)
 export const authPublicRoutes = new Router()
+authPublicRoutes.get('/api/auth/auto-login', ctrl.autoLogin)
 authPublicRoutes.get('/api/auth/status', ctrl.authStatus)
 authPublicRoutes.post('/api/auth/login', ctrl.login)
 

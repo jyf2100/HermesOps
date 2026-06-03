@@ -503,7 +503,7 @@ function isImage(type: string): boolean {
         justify-content: center;
         width: 16px;
         height: 16px;
-        color: #999999;
+        color: $text-muted;
     }
 }
 
@@ -511,7 +511,7 @@ function isImage(type: string): boolean {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #999999;
+    color: $text-muted;
     width: 24px;
     min-width: 24px;
     height: 22px;
@@ -653,7 +653,7 @@ function isImage(type: string): boolean {
     }
 
     .dark & {
-        background-color: #333333;
+        background-color: var(--bg-input);
     }
 }
 

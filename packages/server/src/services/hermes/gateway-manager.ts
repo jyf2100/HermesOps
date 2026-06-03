@@ -573,6 +573,7 @@ export class GatewayManager {
     // 所有平台统一使用 run 模式；dev/nodemon 可通过 env 保留 gateway 进程。
     return new Promise((resolve, reject) => {
       const env = buildGatewayProcessEnv(name, hermesHome)
+      env.API_SERVER_PORT = String(port)
       const detachGateway = shouldDetachGatewayProcess()
       const child = spawnHermesWithBin(HERMES_BIN, ['gateway', 'run', '--replace'], {
         stdio: 'ignore',

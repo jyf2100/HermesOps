@@ -5,6 +5,13 @@ export interface AuthStatus {
   hasUsers?: boolean
 }
 
+export async function autoLogin(): Promise<string> {
+  const res = await fetch('/api/auth/auto-login')
+  if (!res.ok) throw new Error('Auto-login not available')
+  const data = await res.json()
+  return data.token
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch('/api/auth/status')
   if (!res.ok) throw new Error('Failed to fetch auth status')

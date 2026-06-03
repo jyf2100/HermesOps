@@ -2,7 +2,7 @@
 import { ref, onMounted } from "vue";
 import { NButton, NInput, NModal, NForm, NFormItem, NPopconfirm, useMessage } from "naive-ui";
 import { useI18n } from "vue-i18n";
-import { changePassword, changeUsername, fetchCurrentUser, fetchLockedIps, unlockSpecificIp, unlockAllIps } from "@/api/auth";
+import { changeUsername, fetchCurrentUser, fetchLockedIps, unlockSpecificIp, unlockAllIps } from "@/api/auth";
 import type { LockedIp } from "@/api/auth";
 
 const { t } = useI18n();
@@ -10,12 +10,6 @@ const message = useMessage();
 
 const username = ref<string | null>(null);
 const loading = ref(false);
-
-// Change password form
-const showChangePasswordModal = ref(false);
-const currentPasswordForPwd = ref("");
-const newPasswordVal = ref("");
-const newPasswordConfirm = ref("");
 
 // Change username form
 const showChangeUsernameModal = ref(false);
@@ -28,30 +22,6 @@ onMounted(async () => {
     username.value = user.username;
   } catch { /* ignore */ }
 });
-
-async function handleChangePassword() {
-  if (newPasswordVal.value !== newPasswordConfirm.value) {
-    message.error(t("login.passwordMismatch"));
-    return;
-  }
-  if (newPasswordVal.value.length < 6) {
-    message.error(t("login.passwordTooShort"));
-    return;
-  }
-  loading.value = true;
-  try {
-    await changePassword(currentPasswordForPwd.value, newPasswordVal.value);
-    showChangePasswordModal.value = false;
-    currentPasswordForPwd.value = "";
-    newPasswordVal.value = "";
-    newPasswordConfirm.value = "";
-    message.success(t("login.passwordChanged"));
-  } catch (err: any) {
-    message.error(err.message || t("common.saveFailed"));
-  } finally {
-    loading.value = false;
-  }
-}
 
 async function handleChangeUsername() {
   if (newUsernameVal.value.trim().length < 2) {
@@ -71,13 +41,6 @@ async function handleChangeUsername() {
   } finally {
     loading.value = false;
   }
-}
-
-function openChangePasswordModal() {
-  currentPasswordForPwd.value = "";
-  newPasswordVal.value = "";
-  newPasswordConfirm.value = "";
-  showChangePasswordModal.value = true;
 }
 
 function openChangeUsernameModal() {
@@ -136,7 +99,6 @@ onMounted(() => { loadLockedIps(); });
       <div class="action-row">
         <span class="action-label">{{ t("login.passwordLoginConfigured", { username }) }}</span>
         <div class="action-buttons">
-          <NButton @click="openChangePasswordModal">{{ t("login.changePassword") }}</NButton>
           <NButton @click="openChangeUsernameModal">{{ t("login.changeUsername") }}</NButton>
         </div>
       </div>
@@ -169,25 +131,6 @@ onMounted(() => { loadLockedIps(); });
       </div>
       <p v-else class="empty-hint">{{ t("settings.lockedIps.empty") }}</p>
     </div>
-
-    <!-- Change password modal -->
-    <NModal v-model:show="showChangePasswordModal" preset="dialog" :title="t('login.changePassword')">
-      <NForm label-placement="top">
-        <NFormItem :label="t('login.currentPassword')">
-          <NInput v-model:value="currentPasswordForPwd" type="password" show-password-on="click" :placeholder="t('login.currentPassword')" />
-        </NFormItem>
-        <NFormItem :label="t('login.newPassword')">
-          <NInput v-model:value="newPasswordVal" type="password" show-password-on="click" :placeholder="t('login.newPassword')" />
-        </NFormItem>
-        <NFormItem :label="t('login.confirmPassword')">
-          <NInput v-model:value="newPasswordConfirm" type="password" show-password-on="click" :placeholder="t('login.confirmPassword')" @keyup.enter="handleChangePassword" />
-        </NFormItem>
-      </NForm>
-      <template #action>
-        <NButton @click="showChangePasswordModal = false">{{ t("common.cancel") }}</NButton>
-        <NButton type="primary" :loading="loading" @click="handleChangePassword">{{ t("common.save") }}</NButton>
-      </template>
-    </NModal>
 
     <!-- Change username modal -->
     <NModal v-model:show="showChangeUsernameModal" preset="dialog" :title="t('login.changeUsername')">

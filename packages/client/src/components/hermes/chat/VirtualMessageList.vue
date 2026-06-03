@@ -439,7 +439,7 @@ defineExpose({
   background-color: $bg-card;
 
   .dark & {
-    background-color: #333333;
+    background-color: var(--bg-card-hover);
   }
 }
 

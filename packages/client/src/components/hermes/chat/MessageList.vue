@@ -467,7 +467,7 @@ defineExpose({
   backdrop-filter: blur(14px);
 
   .dark & {
-    background: #262626;
+    background: var(--bg-card);
   }
 }
 

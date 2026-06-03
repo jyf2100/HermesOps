@@ -2,18 +2,23 @@
 import { NSwitch, NSelect, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/hermes/settings'
-import { useTheme, type BrightnessMode } from '@/composables/useTheme'
+import { useTheme, type BrightnessMode, type ThemeStyle } from '@/composables/useTheme'
 import SettingRow from './SettingRow.vue'
 
 const settingsStore = useSettingsStore()
 const message = useMessage()
 const { t } = useI18n()
-const { brightness, setBrightness } = useTheme()
+const { brightness, style, setBrightness, setStyle } = useTheme()
 
 const themeOptions = [
   { label: t('settings.display.themeLight'), value: 'light' },
   { label: t('settings.display.themeDark'), value: 'dark' },
   { label: t('settings.display.themeSystem'), value: 'system' },
+]
+
+const styleOptions = [
+  { label: t('settings.display.styleInk'), value: 'ink' },
+  { label: t('settings.display.styleComic'), value: 'comic' },
 ]
 
 async function save(values: Record<string, any>) {
@@ -30,10 +35,18 @@ function handleThemeChange(val: string) {
   setBrightness(m)
   save({ skin: m })
 }
+
+function handleStyleChange(val: string) {
+  const s = val as ThemeStyle
+  setStyle(s)
+}
 </script>
 
 <template>
   <section class="settings-section">
+    <SettingRow :label="t('settings.display.styleLabel')" :hint="t('settings.display.themeHint')">
+      <NSelect :value="style" :options="styleOptions" size="small" :consistent-menu-width="false" class="input-sm" @update:value="handleStyleChange" />
+    </SettingRow>
     <SettingRow :label="t('settings.display.theme')" :hint="t('settings.display.themeHint')">
       <NSelect :value="brightness" :options="themeOptions" size="small" :consistent-menu-width="false" class="input-sm" @update:value="handleThemeChange" />
     </SettingRow>

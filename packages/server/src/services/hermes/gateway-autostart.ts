@@ -7,6 +7,7 @@ import { getProfileDir, listProfileNamesFromDisk } from './hermes-profile'
 import { startGatewayRunManaged } from './gateway-runner'
 import { parseGatewayStatusesFromProfileList } from './profile-list-parser'
 import { execHermesWithBin } from './hermes-process'
+import { resolveAndAssignPort } from './gateway-port-resolver'
 
 const RESERVED_PROFILE_NAMES = new Set([
   'hermes', 'test', 'tmp', 'root', 'sudo',
@@ -186,15 +187,16 @@ export async function startGatewayForProfile(
   hermesBin: string,
   profile: string,
   profileDir: string,
-  opts: { managedRun?: boolean } = {},
+  opts: { managedRun?: boolean; port?: number } = {},
 ): Promise<void> {
   if (opts.managedRun ?? shouldUseManagedGatewayRun()) {
-    const result = startGatewayRunManaged(hermesBin, { profileDir })
+    const result = startGatewayRunManaged(hermesBin, { profileDir, port: opts.port })
     logger.info(
-      '[gateway-autostart] gateway started via background run profile=%s home=%s pid=%s',
+      '[gateway-autostart] gateway started via background run profile=%s home=%s pid=%s port=%s',
       profile,
       profileDir,
       result.pid || 'unknown',
+      opts.port || 'default',
     )
     return
   }
@@ -206,17 +208,19 @@ export async function startGatewayForProfile(
       env: {
         ...process.env,
         HERMES_HOME: profileDir,
+        ...(opts.port ? { API_SERVER_PORT: String(opts.port) } : {}),
       },
     })
-    logger.info('[gateway-autostart] gateway started via Hermes CLI service profile=%s home=%s', profile, profileDir)
+    logger.info('[gateway-autostart] gateway started via Hermes CLI service profile=%s home=%s port=%s', profile, profileDir, opts.port || 'default')
   } catch (err) {
     logger.warn(err, '[gateway-autostart] Hermes CLI gateway start failed; falling back to background run profile=%s home=%s', profile, profileDir)
-    const result = startGatewayRunManaged(hermesBin, { profileDir })
+    const result = startGatewayRunManaged(hermesBin, { profileDir, port: opts.port })
     logger.info(
-      '[gateway-autostart] gateway started via fallback background run profile=%s home=%s pid=%s',
+      '[gateway-autostart] gateway started via fallback background run profile=%s home=%s pid=%s port=%s',
       profile,
       profileDir,
       result.pid || 'unknown',
+      opts.port || 'default',
     )
   }
 }
@@ -231,11 +235,14 @@ export async function getGatewayRuntimeStatusForProfile(profile: string): Promis
 export async function restartGatewayForProfile(profile: string): Promise<{ running: boolean; profile: string }> {
   const hermesBin = resolveHermesBin()
   const profileDir = getProfileDir(profile)
+  const allProfileDirs = listProfileNamesFromDisk().map(p => getProfileDir(p))
+  const port = await resolveAndAssignPort(profileDir, allProfileDirs, profile)
+
   await clearApiServerForProfile(profileDir)
   await stopGatewayForProfile(hermesBin, profile, profileDir)
 
   try {
-    await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRun() })
+    await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRun(), port })
   } catch (err) {
     logger.error(err, '[gateway-autostart] Hermes gateway restart failed profile=%s home=%s', profile, profileDir)
     throw err
@@ -243,6 +250,34 @@ export async function restartGatewayForProfile(profile: string): Promise<{ runni
 
   const running = await waitForGatewayRunning(hermesBin, profile, profileDir)
   if (!running) throw new Error('Hermes gateway start completed but gateway did not report running within timeout')
+  return { running, profile }
+}
+
+export async function startGatewayForNewProfile(profile: string): Promise<{ running: boolean; profile: string }> {
+  const hermesBin = resolveHermesBin()
+  const profileDir = getProfileDir(profile)
+
+  if (await isGatewayRunningForProfile(hermesBin, profileDir)) {
+    logger.info('[gateway-autostart] gateway already running for new profile=%s home=%s', profile, profileDir)
+    return { running: true, profile }
+  }
+
+  const allProfileDirs = listProfileNamesFromDisk().map(p => getProfileDir(p))
+  const port = await resolveAndAssignPort(profileDir, allProfileDirs, profile)
+
+  await clearApiServerForProfile(profileDir)
+
+  try {
+    await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRun(), port })
+  } catch (err) {
+    logger.error(err, '[gateway-autostart] Hermes gateway start for new profile failed profile=%s home=%s', profile, profileDir)
+    throw err
+  }
+
+  const running = await waitForGatewayRunning(hermesBin, profile, profileDir)
+  if (!running) {
+    logger.warn('[gateway-autostart] gateway start completed but did not report running within timeout for new profile=%s home=%s', profile, profileDir)
+  }
   return { running, profile }
 }
 
@@ -261,6 +296,7 @@ export async function clearApiServerForProfile(profileDir: string): Promise<void
 export async function ensureProfileGatewaysRunning(): Promise<void> {
   const hermesBin = resolveHermesBin()
   const profiles = listProfileNamesFromDisk()
+  const allProfileDirs = profiles.map(p => getProfileDir(p))
   let gatewayStatuses: Map<string, string> | undefined
   try {
     gatewayStatuses = await listGatewayStatusesFromProfileList(hermesBin)
@@ -285,7 +321,8 @@ export async function ensureProfileGatewaysRunning(): Promise<void> {
     }
 
     await clearApiServerForProfile(profileDir)
-    await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRunForAutostart() })
+    const port = await resolveAndAssignPort(profileDir, allProfileDirs, profile)
+    await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRunForAutostart(), port })
     const ready = await waitForGatewayRunning(hermesBin, profile, profileDir)
     if (!ready) {
       logger.warn('[gateway-autostart] gateway start completed but did not report running within timeout profile=%s home=%s', profile, profileDir)
