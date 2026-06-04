@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, Tray, shell, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { startWebUiServer, stopWebUiServer, getToken } from './webui-server'
+import { spawn } from 'node:child_process'
+import { startWebUiServer, stopWebUiServer, getToken, getServerProc } from './webui-server'
 import { desktopIcon, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin } from './paths'
 import { checkForDesktopUpdates, initAutoUpdater } from './updater'
 import { t } from './desktop-i18n'
@@ -419,6 +420,7 @@ function runDesktopApp() {
       },
     })
     app.on('activate', () => {
+      if (isQuitting) return
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow()
       } else if (mainWindow) {
@@ -428,19 +430,39 @@ function runDesktopApp() {
   })
 
   app.on('window-all-closed', () => {
-    if (isQuitting && process.platform !== 'darwin') app.quit()
+    // On macOS, keep the app running (tray-only) when all windows close.
+    // On Windows/Linux, if we're actually quitting, let the app exit.
+    // Otherwise (e.g. last window closed unexpectedly), stay alive via tray.
+    if (isQuitting) app.quit()
   })
 
-  app.on('before-quit', async (e) => {
-    if (!isQuitting && process.platform !== 'darwin') {
-      e.preventDefault()
-      mainWindow?.hide()
-      updateTrayMenu()
-      return
+  // Mark that we're quitting so the window 'close' handler allows the window
+  // to be destroyed. On macOS, Cmd+Q triggers before-quit directly (not via
+  // quitApp), so isQuitting would still be false without this handler.
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
+  // 'will-quit' fires after all windows are closed and the app is about to
+  // exit. We use this instead of an async before-quit handler because
+  // Electron does not await async event handlers, which caused crashes.
+  // Synchronous kill ensures cleanup completes before exit.
+  app.on('will-quit', () => {
+    const proc = getServerProc()
+    if (proc && !proc.killed) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          })
+        } else {
+          proc.kill('SIGKILL')
+        }
+      } catch {
+        // best-effort; app is exiting anyway
+      }
     }
-    e.preventDefault()
-    await stopWebUiServer().catch(() => undefined)
-    app.exit(0)
   })
 }
 
