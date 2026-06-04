@@ -115,7 +115,7 @@ function createTray() {
     icon.setTemplateImage(true)
   }
   tray = new Tray(icon)
-  tray.setToolTip('Hermes Studio')
+  tray.setToolTip('NewHermes Studio')
   tray.on('click', () => {
     showMainWindow()
     updateTrayMenu()
@@ -129,7 +129,7 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 600,
-    title: 'Hermes Studio',
+    title: 'NewHermes Studio',
     backgroundColor: '#1a1a1a',
     autoHideMenuBar: true,
     show: !START_HIDDEN,
@@ -174,7 +174,7 @@ function createWindow() {
 
 function splashHtml(): string {
   const startingLabel = escapeHtml(t('desktop.startingLocalServices'))
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>NewHermes Studio</title>
 <style>
   html,body{margin:0;height:100%;background:#1a1a1a;color:#e5e5e5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;}
   .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px}
@@ -188,7 +188,7 @@ function splashHtml(): string {
   .bar{width:0;height:100%;background:#d8d8d8;transition:width .18s ease}
   h1{font-weight:500;margin:0;font-size:18px}
 </style></head><body><div class="wrap">
-<h1>Hermes Studio</h1>
+<h1>NewHermes Studio</h1>
 <div class="row"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 <div id="label" class="label">${startingLabel}</div>
 <div class="progress"><div id="bar" class="bar"></div></div>
@@ -215,7 +215,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
         <pre>${safeError}</pre>
        </section>`
     : ''
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>NewHermes Studio</title>
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
@@ -242,7 +242,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
     button{min-height:78px}
   }
 </style></head><body><main class="wrap">
-<div class="brand"><div class="mark">H</div><h1>Hermes Studio</h1></div>
+<div class="brand"><div class="mark">N</div><h1>NewHermes Studio</h1></div>
 <p class="label">${escapeHtml(t('desktop.selectRuntimeSource'))}</p>
 ${errorBlock}
 <div class="actions">
