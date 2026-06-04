@@ -1,8 +1,8 @@
 !macro customInit
-  IfFileExists "$INSTDIR\Hermes Studio.exe" 0 hermesStudioStopDone
-    DetailPrint "Stopping Hermes Studio..."
-    nsExec::ExecToLog '"$INSTDIR\Hermes Studio.exe" --quit'
+  IfFileExists "$INSTDIR\NewHermes.Studio.exe" 0 hermesStudioStopDone
+    DetailPrint "Stopping NewHermes Studio..."
+    nsExec::ExecToLog '"$INSTDIR\NewHermes.Studio.exe" --quit'
     Sleep 5000
-    nsExec::ExecToLog 'taskkill.exe /IM "Hermes Studio.exe" /T /F'
+    nsExec::ExecToLog 'taskkill.exe /IM "NewHermes.Studio.exe" /T /F'
   hermesStudioStopDone:
 !macroend

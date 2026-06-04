@@ -27,7 +27,16 @@
       "Bash(xargs -I{} echo \"handleLogout 引用: {} 处\")",
       "Bash(xargs -I{} echo \"DefaultCredentialPrompt 引用: {} 处\")",
       "Bash(git config *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(https_proxy=http://172.32.147.190:7890 git push *)",
+      "Bash(git tag *)",
+      "Bash(https_proxy=http://172.32.147.190:7890 gh run *)",
+      "Bash(https_proxy=http://172.32.147.190:7890 gh api *)",
+      "Bash(https_proxy=http://172.32.147.190:7890 gh release view newhermes-20060603 --repo jyf2100/HermesOps)",
+      "Bash(https_proxy=http://172.32.147.190:7890 git -c http.proxy=http://172.32.147.190:7890 fetch jyf hermes-web-ui0604 --depth=1)",
+      "Bash(https_proxy=http://172.32.147.190:7890 gh release *)",
+      "Bash(npm test *)"
     ]
   }
 }
