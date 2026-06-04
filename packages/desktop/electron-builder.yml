@@ -60,13 +60,13 @@ mac:
   hardenedRuntime: true
   gatekeeperAssess: false
   notarize: true
-  artifactName: "NewHermes.Studio-${version}-${arch}.${ext}"
+  artifactName: "NewHermes.Studio-20260604-${arch}.${ext}"
 
 win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: "NewHermes.Studio-${version}-${arch}.${ext}"
+  artifactName: "NewHermes.Studio-20260604-${arch}.${ext}"
 
 linux:
   icon: build/icons
@@ -76,7 +76,7 @@ linux:
     - target: deb
       arch: [x64]   # fpm has no arm64 binary; deb only on x64
   category: Development
-  artifactName: "NewHermes.Studio-${version}-${arch}.${ext}"
+  artifactName: "NewHermes.Studio-20260604-${arch}.${ext}"
 
 nsis:
   oneClick: false
