@@ -219,7 +219,7 @@ export default {
     nodeVersionWarning: 'Node.js v{version} detectado. Atualize para a versao 23 ou posterior.',
     changelog: 'Registro de alteracoes',
     noChangelog: 'Nenhum registro disponivel',
-    kanban: 'Kanban',
+    kanban: 'Minhas tarefas',
     groupTools: 'Ferramentas',
     groupToolsShort: "Ferr.",
     codingAgents: "Agentes de código",

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout *)",
+      "Bash(grep -n 'var\\(--bg-input\\)\\\\|var\\(--bg-card-hover\\)\\\\|$text-muted\\\\|$text-secondary' packages/client/src/components/hermes/chat/ChatInput.vue)",
+      "Bash(grep -n 'var\\(--bg-input\\)\\\\|$text-muted' packages/client/src/components/hermes/group-chat/GroupChatInput.vue)",
+      "Bash(npm run *)",
+      "Bash(sudo ctr -n k8s.io images rm docker.io/ekkoye8888/hermes-web-ui:latest)",
+      "Bash(sudo ctr -n k8s.io images rm docker.io/ekkoye8888/hermes-web-ui:20260604)",
+      "Bash(docker save *)",
+      "Bash(sudo ctr -n k8s.io images import -)",
+      "Bash(sudo ctr -n k8s.io images tag docker.io/ekkoye8888/hermes-web-ui:latest docker.io/ekkoye8888/hermes-web-ui:20260604 --force)",
+      "Bash(curl -s -H \"Host: agent1.172-32-153-184.nip.io\" http://localhost:40080/api/auth/auto-login)",
+      "Bash(curl -s -H \"Host: agent1.172-32-153-184.nip.io\" http://localhost:40080/favicon.ico -o /tmp/check.ico)",
+      "Bash(kubectl get *)",
+      "Bash(curl -s -H \"Host: agent1.172-32-153-184.nip.io\" http://localhost:40080/ -o /dev/null -w \"HTTP %{http_code}, Size: %{size_download} bytes\\\\n\")",
+      "Bash(curl -s -H \"Host: agent1.172-32-153-184.nip.io\" http://localhost:40080/api/auth/status)",
+      "Bash(curl -s -H \"Host: agent1.172-32-153-184.nip.io\" http://localhost:40080/)",
+      "Bash(mkdir -p .claude/docs)",
+      "Bash(git show *)",
+      "Bash(git ls-tree *)",
+      "Bash(https_proxy=http://172.32.147.190:7890 git -c http.proxy=http://172.32.147.190:7890 fetch jyf newhermes-20060603)",
+      "Bash(git clean *)",
+      "Bash(convert .claude/docs/images-01.jpg -resize 256x256 -background none packages/client/public/logo.png)",
+      "Bash(convert packages/client/public/logo.png -resize 64x64 -define icon:auto-resize=64,48,32,16 packages/client/public/favicon.ico)",
+      "Bash(xargs -I{} echo \"apikey.fun 引用: {} 处\")",
+      "Bash(xargs -I{} echo \"handleLogout 引用: {} 处\")",
+      "Bash(xargs -I{} echo \"DefaultCredentialPrompt 引用: {} 处\")",
+      "Bash(git config *)",
+      "Bash(git add *)"
+    ]
+  }
+}

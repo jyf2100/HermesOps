@@ -6,17 +6,17 @@ import { config } from '../config'
 const APP_HOME = config.appHome
 const LOCK_FILE = join(APP_HOME, '.login-lock.json')
 
-// Per-IP settings
-const IP_MAX_FAILURES = 10
-const IP_FAILURE_WINDOW_MS = 15 * 60_000 // 15 minutes
-const IP_LOCK_DURATION_MS = 60 * 60_000 // 1 hour
+// Per-IP settings (configurable via environment variables)
+const IP_MAX_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '10', 10) || 10
+const IP_FAILURE_WINDOW_MS = (parseInt(process.env.LOGIN_FAILURE_WINDOW_MIN || '15', 10) || 15) * 60_000
+const IP_LOCK_DURATION_MS = (parseInt(process.env.LOGIN_LOCK_MINUTES || '60', 10) || 60) * 60_000
 const IP_MAP_MAX_SIZE = 10000
 
-// Global safety net (against distributed attacks)
+// Global safety net (configurable via environment variables)
 const GLOBAL_WINDOW_MS = 60_000
 const GLOBAL_MAX_REQUESTS_PER_WINDOW = 100
-const GLOBAL_MAX_TOTAL_FAILURES = 50
-const GLOBAL_LOCK_DURATION_MS = 30 * 60_000 // 30 minutes
+const GLOBAL_MAX_TOTAL_FAILURES = parseInt(process.env.LOGIN_GLOBAL_MAX_FAILURES || '50', 10) || 50
+const GLOBAL_LOCK_DURATION_MS = (parseInt(process.env.LOGIN_GLOBAL_LOCK_MINUTES || '30', 10) || 30) * 60_000
 
 interface IpEntry {
   failures: number
@@ -172,6 +172,7 @@ function recordIpFailure(map: Record<string, IpEntry>, ip: string): IpEntry {
 }
 
 export function checkPassword(ip: string): CheckResult {
+  if (IP_MAX_FAILURES === 0) return { allowed: true }
   const global = checkGlobalLimits()
   if (global) return global
 
@@ -186,6 +187,7 @@ export function checkPassword(ip: string): CheckResult {
 }
 
 export function checkToken(ip: string): CheckResult {
+  if (IP_MAX_FAILURES === 0) return { allowed: true }
   const global = checkGlobalLimits()
   if (global) return global
 
