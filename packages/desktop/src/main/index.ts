@@ -1,10 +1,11 @@
 import { app, BrowserWindow, Menu, Tray, shell, ipcMain, nativeImage } from 'electron'
 import { join } from 'node:path'
-import { startWebUiServer, stopWebUiServer, getToken } from './webui-server'
-import { bundledNode, desktopIcon, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin, webuiDir } from './paths'
+import { spawn } from 'node:child_process'
+import { startWebUiServer, stopWebUiServer, getToken, getServerProc } from './webui-server'
+import { desktopIcon, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin } from './paths'
 import { checkForDesktopUpdates, initAutoUpdater } from './updater'
 import { t } from './desktop-i18n'
-import { installHermesStudioCliShim, installHermesStudioMcpShim } from './cli-shim'
+import { installHermesStudioCliShim } from './cli-shim'
 import { parseHermesCliArgs, runBundledHermesCli } from './hermes-cli'
 import {
   cachedRuntimeNeedsPackagedReleaseUpdate,
@@ -23,52 +24,15 @@ let serverUrl: string | null = null
 let tray: Tray | null = null
 let isQuitting = false
 let isBootstrapping = false
-let windowFadeTimer: NodeJS.Timeout | null = null
-
-function cancelWindowFade() {
-  if (windowFadeTimer) {
-    clearInterval(windowFadeTimer)
-    windowFadeTimer = null
-  }
-}
-
-function showWindowWithFade(focus = true) {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-
-  cancelWindowFade()
-  if (process.platform !== 'win32' || mainWindow.isVisible()) {
-    mainWindow.setOpacity(1)
-    mainWindow.show()
-    if (focus) mainWindow.focus()
-    return
-  }
-
-  const durationMs = 180
-  const startedAt = Date.now()
-  mainWindow.setOpacity(0)
-  mainWindow.show()
-  if (focus) mainWindow.focus()
-  windowFadeTimer = setInterval(() => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      cancelWindowFade()
-      return
-    }
-    const progress = Math.min(1, (Date.now() - startedAt) / durationMs)
-    mainWindow.setOpacity(progress)
-    if (progress >= 1) {
-      mainWindow.setOpacity(1)
-      cancelWindowFade()
-    }
-  }, 16)
-}
 
 function showMainWindow() {
   if (!mainWindow) {
     createWindow()
   }
   if (!mainWindow) return
-  showWindowWithFade(true)
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
 }
 
 function quitApp() {
@@ -152,7 +116,7 @@ function createTray() {
     icon.setTemplateImage(true)
   }
   tray = new Tray(icon)
-  tray.setToolTip('Hermes Studio')
+  tray.setToolTip('NewHermes Studio')
   tray.on('click', () => {
     showMainWindow()
     updateTrayMenu()
@@ -166,10 +130,10 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 600,
-    title: 'Hermes Studio',
+    title: 'NewHermes Studio',
     backgroundColor: '#1a1a1a',
     autoHideMenuBar: true,
-    show: false,
+    show: !START_HIDDEN,
     ...(process.platform === 'linux' ? { icon: desktopIcon() } : {}),
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
@@ -179,14 +143,9 @@ function createWindow() {
     },
   })
 
-  mainWindow.once('ready-to-show', () => {
-    if (!START_HIDDEN) showWindowWithFade(true)
-  })
-
   mainWindow.on('close', (event) => {
     if (isQuitting) return
     event.preventDefault()
-    cancelWindowFade()
     mainWindow?.hide()
     updateTrayMenu()
   })
@@ -216,7 +175,7 @@ function createWindow() {
 
 function splashHtml(): string {
   const startingLabel = escapeHtml(t('desktop.startingLocalServices'))
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>NewHermes Studio</title>
 <style>
   html,body{margin:0;height:100%;background:#1a1a1a;color:#e5e5e5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;}
   .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px}
@@ -230,7 +189,7 @@ function splashHtml(): string {
   .bar{width:0;height:100%;background:#d8d8d8;transition:width .18s ease}
   h1{font-weight:500;margin:0;font-size:18px}
 </style></head><body><div class="wrap">
-<h1>Hermes Studio</h1>
+<h1>NewHermes Studio</h1>
 <div class="row"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 <div id="label" class="label">${startingLabel}</div>
 <div class="progress"><div id="bar" class="bar"></div></div>
@@ -257,7 +216,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
         <pre>${safeError}</pre>
        </section>`
     : ''
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>NewHermes Studio</title>
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
@@ -284,7 +243,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
     button{min-height:78px}
   }
 </style></head><body><main class="wrap">
-<div class="brand"><div class="mark">H</div><h1>Hermes Studio</h1></div>
+<div class="brand"><div class="mark">N</div><h1>NewHermes Studio</h1></div>
 <p class="label">${escapeHtml(t('desktop.selectRuntimeSource'))}</p>
 ${errorBlock}
 <div class="actions">
@@ -451,17 +410,6 @@ function runDesktopApp() {
       }).catch(err => {
         console.warn(`[cli-shim] failed to install hermes-studio command: ${err instanceof Error ? err.message : String(err)}`)
       })
-      installHermesStudioMcpShim({
-        nodePath: bundledNode(),
-        scriptPath: join(webuiDir(), 'bin', 'hermes-web-ui-mcp.mjs'),
-        webUiUrl: `http://127.0.0.1:${PORT}`,
-      }).then(result => {
-        if (result.status === 'skipped') {
-          console.warn(`[cli-shim] ${result.reason}: ${result.shimPath}`)
-        }
-      }).catch(err => {
-        console.warn(`[cli-shim] failed to install hermes-studio-mcp command: ${err instanceof Error ? err.message : String(err)}`)
-      })
     }
     createTray()
     createWindow()
@@ -472,6 +420,7 @@ function runDesktopApp() {
       },
     })
     app.on('activate', () => {
+      if (isQuitting) return
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow()
       } else if (mainWindow) {
@@ -481,20 +430,39 @@ function runDesktopApp() {
   })
 
   app.on('window-all-closed', () => {
-    if (isQuitting && process.platform !== 'darwin') app.quit()
+    // On macOS, keep the app running (tray-only) when all windows close.
+    // On Windows/Linux, if we're actually quitting, let the app exit.
+    // Otherwise (e.g. last window closed unexpectedly), stay alive via tray.
+    if (isQuitting) app.quit()
   })
 
-  app.on('before-quit', async (e) => {
-    if (!isQuitting && process.platform !== 'darwin') {
-      e.preventDefault()
-      mainWindow?.hide()
-      updateTrayMenu()
-      return
+  // Mark that we're quitting so the window 'close' handler allows the window
+  // to be destroyed. On macOS, Cmd+Q triggers before-quit directly (not via
+  // quitApp), so isQuitting would still be false without this handler.
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
+  // 'will-quit' fires after all windows are closed and the app is about to
+  // exit. We use this instead of an async before-quit handler because
+  // Electron does not await async event handlers, which caused crashes.
+  // Synchronous kill ensures cleanup completes before exit.
+  app.on('will-quit', () => {
+    const proc = getServerProc()
+    if (proc && !proc.killed) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill.exe', ['/PID', String(proc.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          })
+        } else {
+          proc.kill('SIGKILL')
+        }
+      } catch {
+        // best-effort; app is exiting anyway
+      }
     }
-    e.preventDefault()
-    cancelWindowFade()
-    await stopWebUiServer().catch(() => undefined)
-    app.exit(0)
   })
 }
 
