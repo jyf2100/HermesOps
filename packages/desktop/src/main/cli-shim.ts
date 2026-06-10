@@ -16,8 +16,8 @@ const execFileAsync = promisify(execFile)
 
 const SHIM_MARKER = 'HERMES_STUDIO_CLI_SHIM'
 const MCP_SHIM_MARKER = 'HERMES_STUDIO_MCP_SHIM'
-const PATH_MARKER_START = '# >>> Hermes Studio CLI shim >>>'
-const PATH_MARKER_END = '# <<< Hermes Studio CLI shim <<<'
+const PATH_MARKER_START = '# >>> NewHermes Studio CLI shim >>>'
+const PATH_MARKER_END = '# <<< NewHermes Studio CLI shim <<<'
 
 type ShimInstallStatus = 'installed' | 'updated' | 'unchanged' | 'skipped'
 
@@ -104,8 +104,8 @@ export function createShimContent(
       `if "%RUNTIME%"=="" set "RUNTIME=%WEBUI_HOME%\\desktop-runtime\\hermes\\${runtimeVersion}\\${runtimePlatform}"`,
       'set "PYTHON=%RUNTIME%\\python\\python.exe"',
       'if not exist "%PYTHON%" (',
-      '  echo Hermes Studio Python runtime not found at "%PYTHON%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio. 1>&2',
+      '  echo NewHermes Studio Python runtime not found at "%PYTHON%" 1>&2',
+      '  echo Open NewHermes Studio once to finish runtime setup, then retry hermes-studio. 1>&2',
       '  exit /b 127',
       ')',
       '"%PYTHON%" -m hermes_cli.main %*',
@@ -119,7 +119,7 @@ export function createShimContent(
     `# ${SHIM_MARKER}`,
     `APP=${shellQuote(executablePath)}`,
     'if [ ! -x "$APP" ]; then',
-    '  echo "Hermes Studio executable not found at $APP" >&2',
+    '  echo "NewHermes Studio executable not found at $APP" >&2',
     '  exit 127',
     'fi',
     'unset ELECTRON_RUN_AS_NODE',
@@ -141,12 +141,12 @@ export function createMcpShimContent(
       `set "NODE=${nodePath}"`,
       `set "SCRIPT=${scriptPath}"`,
       'if not exist "%NODE%" (',
-      '  echo Hermes Studio Node runtime not found at "%NODE%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio-mcp. 1>&2',
+      '  echo NewHermes Studio Node runtime not found at "%NODE%" 1>&2',
+      '  echo Open NewHermes Studio once to finish runtime setup, then retry hermes-studio-mcp. 1>&2',
       '  exit /b 127',
       ')',
       'if not exist "%SCRIPT%" (',
-      '  echo Hermes Studio MCP script not found at "%SCRIPT%" 1>&2',
+      '  echo NewHermes Studio MCP script not found at "%SCRIPT%" 1>&2',
       '  exit /b 127',
       ')',
       'if "%HERMES_WEB_UI_URL%"=="" (',
@@ -169,12 +169,12 @@ export function createMcpShimContent(
     `NODE=${shellQuote(nodePath)}`,
     `SCRIPT=${shellQuote(scriptPath)}`,
     'if [ ! -x "$NODE" ]; then',
-    '  echo "Hermes Studio Node runtime not found at $NODE" >&2',
-    '  echo "Open Hermes Studio once to finish runtime setup, then retry hermes-studio-mcp." >&2',
+    '  echo "NewHermes Studio Node runtime not found at $NODE" >&2',
+    '  echo "Open NewHermes Studio once to finish runtime setup, then retry hermes-studio-mcp." >&2',
     '  exit 127',
     'fi',
     'if [ ! -f "$SCRIPT" ]; then',
-    '  echo "Hermes Studio MCP script not found at $SCRIPT" >&2',
+    '  echo "NewHermes Studio MCP script not found at $SCRIPT" >&2',
     '  exit 127',
     'fi',
     'if [ -z "${HERMES_WEB_UI_URL:-}" ]; then',
@@ -321,7 +321,7 @@ export async function installHermesStudioCliShim(options: CliShimInstallOptions 
     shimPath,
     status,
     pathUpdated,
-    reason: status === 'skipped' ? 'existing hermes-studio shim is not managed by Hermes Studio' : undefined,
+    reason: status === 'skipped' ? 'existing hermes-studio shim is not managed by NewHermes Studio' : undefined,
   }
 }
 
@@ -346,6 +346,6 @@ export async function installHermesStudioMcpShim(options: McpShimInstallOptions 
     shimPath,
     status,
     pathUpdated,
-    reason: status === 'skipped' ? 'existing hermes-studio-mcp shim is not managed by Hermes Studio' : undefined,
+    reason: status === 'skipped' ? 'existing hermes-studio-mcp shim is not managed by NewHermes Studio' : undefined,
   }
 }

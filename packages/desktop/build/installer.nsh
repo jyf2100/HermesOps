@@ -1,7 +1,7 @@
 !macro customInit
-  IfFileExists "$INSTDIR\Hermes Studio.exe" 0 hermesStudioStopDone
-    DetailPrint "Stopping Hermes Studio..."
-    nsExec::ExecToLog '"$INSTDIR\Hermes Studio.exe" --quit'
+  IfFileExists "$INSTDIR\NewHermes Studio.exe" 0 hermesStudioStopDone
+    DetailPrint "Stopping NewHermes Studio..."
+    nsExec::ExecToLog '"$INSTDIR\NewHermes Studio.exe" --quit'
     Sleep 2000
 
     InitPluginsDir
@@ -9,7 +9,7 @@
     FileWrite $0 "$$ErrorActionPreference = 'SilentlyContinue'$\r$\n"
     FileWrite $0 "$$target = [System.IO.Path]::GetFullPath($$env:HERMES_STUDIO_EXE)$\r$\n"
     FileWrite $0 "function Get-HermesStudioProcess {$\r$\n"
-    FileWrite $0 "  Get-CimInstance Win32_Process -Filter $\"Name = 'Hermes Studio.exe'$\" | Where-Object {$\r$\n"
+    FileWrite $0 "  Get-CimInstance Win32_Process -Filter $\"Name = 'NewHermes Studio.exe'$\" | Where-Object {$\r$\n"
     FileWrite $0 "    try { [System.IO.Path]::GetFullPath($$_.ExecutablePath) -ieq $$target } catch { $$false }$\r$\n"
     FileWrite $0 "  }$\r$\n"
     FileWrite $0 "}$\r$\n"
@@ -31,9 +31,9 @@
     FileWrite $0 "exit 1$\r$\n"
     FileClose $0
 
-    System::Call 'kernel32::SetEnvironmentVariable(t "HERMES_STUDIO_EXE", t "$INSTDIR\Hermes Studio.exe") i .r0'
+    System::Call 'kernel32::SetEnvironmentVariable(t "HERMES_STUDIO_EXE", t "$INSTDIR\NewHermes Studio.exe") i .r0'
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\stop-hermes-studio.ps1"'
     System::Call 'kernel32::SetEnvironmentVariable(t "HERMES_STUDIO_EXE", t "") i .r0'
-    nsExec::ExecToLog 'taskkill.exe /IM "Hermes Studio.exe" /T /F'
+    nsExec::ExecToLog 'taskkill.exe /IM "NewHermes Studio.exe" /T /F'
   hermesStudioStopDone:
 !macroend
