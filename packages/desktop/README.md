@@ -1,6 +1,6 @@
-# Hermes Studio
+# NewHermes Studio
 
-Electron desktop distribution for Hermes Studio.
+Electron desktop distribution for NewHermes Studio.
 
 ## Install
 

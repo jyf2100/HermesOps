@@ -50,3 +50,6 @@ CLAUDE.md
 # Client source map artifacts
 packages/client/src/**/*.js
 .hermes/
+.claude/
+.worktrees/
+skill-gardener-proposal.md
